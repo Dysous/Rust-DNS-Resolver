@@ -39,7 +39,7 @@ jobs:
         host: ${{ secrets.EC2_HOST }}
         username: ubuntu
         key: ${{ secrets.EC2_SSH_KEY }}
-        source: target/release/your-dns-binary   # update this name
+        source: target/release/Project5
         target: /home/ubuntu/dns-server/
 
     - name: Restart DNS server on EC2
