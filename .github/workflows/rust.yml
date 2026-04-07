@@ -33,6 +33,21 @@ jobs:
     - name: Build release binary
       run: cargo build --release --verbose
 
+    - name: Open SSH for deploy
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Add runner IP to security group
+      run: |
+        RUNNER_IP=$(curl -s https://checkip.amazonaws.com)
+        aws ec2 authorize-security-group-ingress \
+          --group-id ${{ secrets.SG_ID }} \
+          --protocol tcp --port 22 \
+          --cidr ${RUNNER_IP}/32
+
     - name: Copy binary to EC2
       uses: appleboy/scp-action@v0.1.7
       with:
@@ -49,3 +64,12 @@ jobs:
         username: ubuntu
         key: ${{ secrets.EC2_SSH_KEY }}
         script: sudo systemctl restart dns-server
+
+    - name: Remove runner IP from security group
+      if: always()   # runs even if deploy fails
+      run: |
+        RUNNER_IP=$(curl -s https://checkip.amazonaws.com)
+        aws ec2 revoke-security-group-ingress \
+          --group-id ${{ secrets.SG_ID }} \
+          --protocol tcp --port 22 \
+          --cidr ${RUNNER_IP}/32
