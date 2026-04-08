@@ -30,8 +30,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Build release binary
-      run: cargo build --release --verbose
+    - name: Build server release binary only
+      run: cargo build --release -p server --verbose
 
     - name: Open SSH for deploy
       uses: aws-actions/configure-aws-credentials@v4
@@ -54,7 +54,7 @@ jobs:
         host: ${{ secrets.EC2_HOST }}
         username: ubuntu
         key: ${{ secrets.EC2_SSH_KEY }}
-        source: target/release/Project5
+        source: target/release/server
         target: /home/ubuntu/dns-server/
 
     - name: Restart DNS server on EC2

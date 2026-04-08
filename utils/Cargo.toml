@@ -1,0 +1,11 @@
+[package]
+name = "utils"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serial_test = "3.1.1"
+
+[profile.test]
+panic = 'abort'
+

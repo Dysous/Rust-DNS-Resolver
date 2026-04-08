@@ -1,6 +1,4 @@
-[package]
-name = "Project5"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = ["server", "client", "utils"]
+resolver = "2"
 
-[dependencies]
