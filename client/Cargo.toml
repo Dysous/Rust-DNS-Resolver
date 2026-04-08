@@ -6,5 +6,5 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1.51.1", features = ["rt", "rt-multi-thread", "macros"] }
 tokio-util = { version = "0.7.0", features = ["full", "codec"] }
-hickory-dns = "0.25.2"
-hickory-resolver = "*"
+hickory-resolver = "0.24"
+

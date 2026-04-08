@@ -1,11 +1,9 @@
 use std::env;
 use std::error::Error;
-use std::net::*;
-use tokio::runtime::Runtime;
+use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::config::*;
 use hickory_resolver::Resolver;
 use hickory_resolver::name_server::TokioConnectionProvider;
-use hickory_resolver::config::*;
-
 
 //Client should be able to query our AWS dns server or any dns server
 //this is a test client and not a huge part of our project except to demonstrate dns requests not over HTTP
@@ -30,10 +28,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("Usage: {} hostname", args[0]);
         return Ok(());
     }
-    println!("Querying hostname: \"{}\"", args[1]);
+    let hostname = args[1].clone();
+    println!("Querying hostname: \"{}\"...", args[1]);
 
-    //build dns query
+    //default dns resolver
+    let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
+    //create custom resolver synced to our server
+    //let mut resolver = Resolver::
+    
+    //IPv4 lookup
+    let response = resolver.lookup_ip(hostname).await?;
+
+    println!("IP addresses for {}:", args[1]);
+    for ip in response {
+        println!("{}", ip);
+    }
 
     Ok(())
 }
