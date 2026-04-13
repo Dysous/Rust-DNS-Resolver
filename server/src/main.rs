@@ -1,12 +1,14 @@
 use std::error::Error;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::net::{SocketAddr, UdpSocket};
-use std::time::Duration;
+use std::time::*;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    run_udp_listener("0.0.0.0:2053")
+    run_udp_listener("0.0.0.0:2053", "dns_requests.log")
 }
 
-fn run_udp_listener(bind_addr: &str) -> Result<(), Box<dyn Error>> {
+fn run_udp_listener(bind_addr: &str, log: &str) -> Result<(), Box<dyn Error>> {
     let socket = UdpSocket::bind(bind_addr)?;
     println!("UDP listener running on {}", bind_addr);
 
@@ -16,6 +18,7 @@ fn run_udp_listener(bind_addr: &str) -> Result<(), Box<dyn Error>> {
         let (size, src) = socket.recv_from(&mut buf)?;
         let request = &buf[..size];
 
+        log_request(log,src, request)?;
         println!("\nreceived {} bytes from {}", size, src);
         print_hex(request);
 
@@ -47,6 +50,26 @@ fn build_notimpl_response(request: &[u8]) -> Vec<u8> {
     response
 }
 
+//log helper to debug received requests
+fn log_request(log_path: &str, src: std::net::SocketAddr, request: &[u8]) -> Result<(), Box<dyn Error>> {
+    let mut file = OpenOptions::new().create(true).append(true).open(log_path)?;
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+
+    writeln!(file, "timestamp: {}", ts)?;
+    writeln!(file, "source: {}", src)?;
+    writeln!(file, "size: {}", request.len())?;
+    writeln!(file, "hex: {}", to_hex(request))?;
+    writeln!(file, "----")?;
+
+    Ok(())
+}
+
+fn to_hex(bytes: &[u8]) -> String {
+    bytes.iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 #[allow(dead_code)]
 fn forward_to_upstream(request: &[u8], upstream: &str) -> Result<Vec<u8>, Box<dyn Error>> {
     let socket = UdpSocket::bind("0.0.0.0:0")?;
