@@ -4,23 +4,23 @@ Goal: Apply the knowledge you've learned in new ways.
 # Project description
 This is an open-ended project. Students can extend their BearTV project or do something new from the ground up. Project ideas must be approved by Dr. Freeman.
 
-You must give a **formal presentation** of your project in place of a final exam. Each group will have ~12 minutes to present their work. Each member of the group must speak. You should have slides. Your presentation must include a demo of your project, although it may invlude a pre-recorded screen capture. In your presentation, you should introduce the problem that you addressed, how you addressed it, technical challenges you faced, what you learned, and next steps (if you were to continue developing it).
+You must give a **formal presentation** of your project in place of a final exam. Each group will have ~12 minutes to present their work. Each member of the group must speak. You should have slides. Your presentation must include a demo of your project, although it may include a pre-recorded screen capture. In your presentation, you should introduce the problem that you addressed, how you addressed it, technical challenges you faced, what you learned, and next steps (if you were to continue developing it).
 
 You may use AI LLM tools to assist with the development of your project, including code assistant tools like GitHub Copilot. If you do use any AI tools, you must describe your use during your presentation.
 
 Unless you get specific approval otherwise, your project **must** include some component deployed on a cloud hosting service. You can use AWS, GCP, Azure, etc. These services have free tiers, and you might consider looking into tiers specifically for students.
 
-**Graudate students enrolled in CSI-5321:** You have additional requirements. See the bottom of the README.
+**Graduate students enrolled in CSI-5321:** You have additional requirements. See the bottom of the README.
 
 ## Milestones
 - You must present your project idea to Dr. Freeman within the first week to get it approved
 - You must meet with Dr. Freeman within the first 3 weeks to give a status update and discuss roadblocks
-- See the course schedule spreadhseet for specific dates
+- See the course schedule spreadsheet for specific dates
 
 ## Project Ideas
 - Simulate UDP packet loss and packet corruption in BearTV in a non-deterministic way (i.e., don't just drop every Nth packet). Then, extend the application protocol to be able to detect and handle this packet loss.
 - Extend the BearTV protocol to support streaming images (or video!) alongside the CC data, and visually display them on the client. This should be done in such a way that it is safely deliver*able* over *any* implementation of IPv4. The images don't have to be relevant to the caption data--you can get them randomly on the server from some image source.
-- Do something hands on with a video streaming protocol such as MoQ, DASH, or HLS.
+- Do something hands-on with a video streaming protocol such as MoQ, DASH, or HLS.
 - Implement QUIC
 - Develop a new congestion control algorithm and evaluate it compared to existing algorithms in a realistic setting
 - Make significant contributions to a relevant open-source repository (e.g., moq-rs)
@@ -70,11 +70,11 @@ Grading will be based on...
 
 # 5321 Extra requirements
 
-(For graudate students enrolled in CSI-5321)
+(For graduate students enrolled in CSI-5321)
 
 Your project **must** have a research component to it. That is, you must set out to address an open research question using some networking concepts you've learned in this course. Subject to my approval, this project can be an extension of a project you're currently working on with your advisor.
 
-Along with your code repository and presentation, you must submit a 4+ page paper (plus biblography), in double-column paper using the [ACM LaTeX template](https://www.acm.org/publications/proceedings-template) under the `sigconf` document class. This paper should include a brief introduction, related work, a description of your approach, experimental results, and a conclusion. Your goal should be to have a paper of high enough quality that it can be easily extended for a full submission to a research conference.
+Along with your code repository and presentation, you must submit a 4+ page paper (plus bibliography), in double-column paper using the [ACM LaTeX template](https://www.acm.org/publications/proceedings-template) under the `sigconf` document class. This paper should include a brief introduction, related work, a description of your approach, experimental results, and a conclusion. Your goal should be to have a paper of high enough quality that it can be easily extended for a full submission to a research conference.
 
 All other instructions for the project apply, including the above submission questions.
 
@@ -86,7 +86,7 @@ All other instructions for the project apply, including the above submission que
 - Quality adaptation for lossy data streaming of something other than traditional video
 - Distributed databases, federation, or blockchain
 - Protocol security flaws
-- IoT, WiFi 8, or 6G
+- IoT, Wi-Fi 8, or 6G
 - CDN performance (e.g., content steering)
 - Live video streaming with distributed super-resolution between server/client for higher quality and lower latency
 - Mesh networking

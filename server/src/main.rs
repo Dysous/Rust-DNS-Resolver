@@ -1,3 +1,5 @@
+mod packet; //dns packet file
+
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
