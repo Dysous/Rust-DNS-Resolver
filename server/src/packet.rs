@@ -30,14 +30,34 @@ impl BytePacketBuffer {
 
     pub fn get(&self, pos: usize) -> u8 { self.buf[pos] }   //can cause out of bound issues later
 
-    pub fn write(&mut self, val: u8) {
+    pub fn write(&mut self, val: u8) -> Result<(), String>{
+        if self.pos >= 512 {
+            return Err("buffer overflow".to_string());
+        }
         self.buf[self.pos] = val;
         self.pos += 1;
+        Ok(())
     }
 
     pub fn write_u16(&mut self, val: u16) {
         self.write((val >> 8) as u8);
         self.write((val & 0xFF) as u8);
+    }
+
+    pub fn write_name(&mut self, name: &str) -> Result<(), String>{
+        for label in name.split('.') {
+            let len = label.len();
+            if len > 63 {
+                return Err(format!("Name length should be less than 63 chars"));
+            }
+            self.write(len as u8);
+
+            for b in label.as_bytes() {
+                self.write(*b);
+            }
+        }
+        self.write(0);
+        Ok(())
     }
 }
 //DNS packet parser/serializer
@@ -112,11 +132,15 @@ impl DnsQuestion {
             qclass: buffer.read_u16(),
         }
     }
-    pub fn write(&self, buffer: &mut BytePacketBuffer, packet: &mut DnsPacket) {
-        packet.write_name(buffer, &self.name);
+
+
+    pub fn write(&self, buffer: &mut BytePacketBuffer) {
+        let _ = buffer.write_name(&self.name);
         buffer.write_u16(self.qtype);
         buffer.write_u16(self.qclass);
     }
+
+
 }
 impl DnsPacket {
     pub fn from_bytes(data: &[u8]) -> Self {
@@ -167,16 +191,7 @@ impl DnsPacket {
         labels.join(".")
     }
 
-    pub fn write_name(&mut self, buffer: &mut BytePacketBuffer, name: &str) {
-        for label in name.split('.') {
-            let len = label.len();
-            buffer.write(len as u8);
-            for b in label.as_bytes() {
-                buffer.write(*b);
-            }
-        }
-        buffer.write(0);
-    }
+
 
 
     pub fn to_bytes(&mut self) -> Vec<u8> {
@@ -188,7 +203,7 @@ impl DnsPacket {
         self.header.write(&mut buffer);
 
         for question in &self.questions {
-            question.write(&mut buffer, self);
+            question.write(&mut buffer);
         }
 
         buffer.buf[..buffer.pos].to_vec()   //week 1 logic, will overflow after 512 bytes later
