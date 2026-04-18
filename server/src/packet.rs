@@ -19,6 +19,9 @@ impl BytePacketBuffer {
     }
 
     pub fn read(&mut self) -> u8 {
+        if self.pos >=512 {
+            return 0;
+        }
         let res = self.buf[self.pos];   //can cause issues in week3 with malformed packets
         self.pos += 1;
         res
@@ -151,13 +154,27 @@ impl DnsPacket {
         for _ in 0..header.qcount {
             questions.push(DnsQuestion::read(&mut buffer));
         }
+        let mut answers = Vec::new();
+        for _ in 0..header.anscount {
+            answers.push(DnsRecord::read(&mut buffer));
+        }
+
+        let mut authorities = Vec::new();
+        for _ in 0..header.authcount {
+            authorities.push(DnsRecord::read(&mut buffer));
+        }
+
+        let mut additional = Vec::new();
+        for _ in 0..header.addcount {
+            additional.push(DnsRecord::read(&mut buffer));
+        }
 
         DnsPacket {
             header,
             questions,
-            answers: Vec::new(),
-            authorities: Vec::new(),
-            additional: Vec::new(),
+            answers,
+            authorities,
+            additional,
         }
     }
     pub fn parse_name(buffer: &mut BytePacketBuffer) -> String {
@@ -205,7 +222,34 @@ impl DnsPacket {
         for question in &self.questions {
             question.write(&mut buffer);
         }
-
+        //let len = data.len().min(512);
         buffer.buf[..buffer.pos].to_vec()   //week 1 logic, will overflow after 512 bytes later
+    }
+}
+impl DnsRecord {
+    pub fn read(buffer: &mut BytePacketBuffer) -> Self {
+        let name = DnsPacket::parse_name(buffer);
+        let rtype = buffer.read_u16();
+        let class = buffer.read_u16();
+        let ttl = u32::from_be_bytes([
+            buffer.read(),
+            buffer.read(),
+            buffer.read(),
+            buffer.read(),
+        ]);
+
+        let data_len = buffer.read_u16() as usize;
+        let mut data = Vec::with_capacity(data_len);
+
+        for _ in 0..data_len {
+            data.push(buffer.read());
+        }
+        DnsRecord {
+            name,
+            rtype,
+            class,
+            ttl,
+            data,
+        }
     }
 }
