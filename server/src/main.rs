@@ -1,11 +1,20 @@
-mod packet; //dns packet file
+mod packet;
+mod stats;
+//dns packet file
 
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{SocketAddr, };
+// use std::net::{SocketAddr, UdpSocket};
 use std::time::*;
 use std::collections::HashMap;
+
+use std::sync::Arc;
+use std::sync::atomic::{ Ordering};
+use tokio::net::UdpSocket;
+use axum::{routing::get, Router, extract::State, Json};
+use tower_http::services::ServeDir;
 
 #[derive(Clone)]
 struct CacheEntry {
@@ -13,40 +22,69 @@ struct CacheEntry {
     expires_at: Instant,
 }
 
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    let shared_stats = Arc::new(stats::DnsStats::new());
 
-fn main() -> Result<(), Box<dyn Error>> {
-    run_udp_listener("0.0.0.0:2053", "dns_requests.log")
+    let dns_stats = Arc::clone(&shared_stats);
+
+    tokio::spawn(async move {
+        if let Err(e) = run_udp_listener("0.0.0.0:2053", "dns_requests.log", dns_stats).await{
+            eprintln!("Error: {}", e);
+        }
+    });
+
+    let web_stats = Arc::clone(&shared_stats);
+    let app = Router::new()
+        .route("/api/stats", get(move | State(s): State<Arc<stats::DnsStats>> | async move {
+            Json(serde_json::json!({
+                "queries": s.total_queries.load(Ordering::Relaxed),
+                "cache_hits": s.cache_hits.load(Ordering::Relaxed),
+            }))
+        }))
+        .with_state(web_stats)
+        .fallback_service(ServeDir::new("static"));
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 80));
+    println!("Web Monitor Live At http://{}", addr);
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+
+    Ok(())
+
 }
 
-fn run_udp_listener(bind_addr: &str, log: &str) -> Result<(), Box<dyn Error>> {
-    let socket = UdpSocket::bind(bind_addr)?;
+async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats>) -> Result<(), Box<dyn Error>> {
+    let socket = UdpSocket::bind(bind_addr).await?;
     println!("UDP listener running on {}", bind_addr);
 
     let mut buf = [0u8; 512];
     let mut cache: HashMap<String, CacheEntry> = HashMap::new();
 
     loop {
-        let (size, src) = socket.recv_from(&mut buf)?;
+        let (size, src) = socket.recv_from(&mut buf).await?;
         let request = &buf[..size];
 
         log_request(log,src, request)?;
         println!("\nreceived {} bytes from {}", size, src);
         print_hex(request);
 
-        let response = handle_request(request, src, &mut cache)?;
-        socket.send_to(&response, src)?;
+        stats.total_queries.fetch_add(1, Ordering::Relaxed);
+        let response = handle_request(request, src, &mut cache, &stats).await?;
+        socket.send_to(&response, src).await?;
     }
 }
 
-fn handle_request(
+async fn handle_request(
     request: &[u8], _src: SocketAddr,
     cache: &mut HashMap<String, CacheEntry>,
+    stats: &stats::DnsStats,
 )-> Result<Vec<u8>, Box<dyn Error>> {
     evict_expired(cache);
 
     let packet = packet::DnsPacket::from_bytes(request);
     if packet.questions.is_empty() {
-        return Ok(forward_to_upstream(request, "8.8.8.8:53")?);
+        return forward_to_upstream(request, "8.8.8.8:53").await;
     }
     let question = &packet.questions[0];
     let cache_key = format!("{}|{}|{}", question.name, question.qtype, question.qclass);
@@ -54,17 +92,18 @@ fn handle_request(
     if let Some(entry) = cache.get(&cache_key) {
         if Instant::now() < entry.expires_at {
             println!("cache hit: {}", cache_key);
+            stats.cache_hits.fetch_add(1, Ordering::Relaxed);
 
             let mut cached_response = entry.response.clone();
-            if request.len() >= 2 && cached_response.len() >= 2{
+            if request.len() >= 2 && cached_response.len() >= 2 {
                 cached_response[0] = request[0];
                 cached_response[1] = request[1];
             }
-            return Ok(entry.response.clone());
+            return Ok(cached_response);
         }
     }
     println!("cache miss: {}", cache_key);
-    let response = forward_to_upstream(request, "8.8.8.8:53")?;
+    let response = forward_to_upstream(request, "8.8.8.8:53").await?;
 
     if let Some(ttl) = extract_min_ttl(&response) {
         if ttl > 0 {
@@ -137,14 +176,16 @@ fn to_hex(bytes: &[u8]) -> String {
         .join(" ")
 }
 #[allow(dead_code)]
-fn forward_to_upstream(request: &[u8], upstream: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-    let socket = UdpSocket::bind("0.0.0.0:0")?;
-    socket.set_read_timeout(Some(Duration::from_secs(5)))?;
-    socket.send_to(request, upstream)?;
-
+async fn forward_to_upstream(request: &[u8], upstream: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    let socket = UdpSocket::bind("0.0.0.0:0").await?;
+    socket.send_to(request, upstream).await?;
     let mut buf = [0u8; 512];
-    let (size, _) = socket.recv_from(&mut buf)?;
-    Ok(buf[..size].to_vec())
+    let result = tokio::time::timeout(Duration::from_secs(5), socket.recv_from(&mut buf)).await;
+    match result {
+        Ok(Ok((size, _))) => Ok(buf[..size].to_vec()),
+        Ok(Err(e)) => Err(e.into()),
+        Err(_) => Err("Upstream connection timed out".into()),
+    }
 }
 
 fn print_hex(bytes: &[u8]) {

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust DNS Monitor</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+            --accent: #38bdf8;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            width: 90%;
+            max-width: 600px;
+        }
+        .stat-card {
+            background: var(--card);
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        .stat-value {
+            font-size: 3rem;
+            font-weight: 800;
+            color: var(--accent);
+            margin: 0;
+        }
+        .stat-label {
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-size: 0.875rem;
+            color: #94a3b8;
+        }
+        h1 { margin-bottom: 2rem; font-weight: 300; }
+        .status { margin-top: 2rem; font-size: 0.75rem; color: #4ade80; }
+    </style>
+</head>
+<body>
+
+<h1>DNS Network Monitor</h1>
+
+<div class="dashboard">
+<div class="stat-card">
+<p id="total-queries" class="stat-value">0</p>
+<p class="stat-label">Total Queries</p>
+</div>
+<div class="stat-card">
+<p id="cache-hits" class="stat-value">0</p>
+<p class="stat-label">Cache Hits</p>
+</div>
+</div>
+
+<div class="status">● System Live (EC2 Virginia)</div>
+
+<script>
+ async function fetchStats() {
+try {
+// This calls your Rust Axum API
+const response = await fetch('/api/stats');
+    const data = await response.json();
+
+// Update the UI with the numbers from your DnsStats struct
+document.getElementById('total-queries').innerText = data.queries;
+    document.getElementById('cache-hits').innerText = data.cache_hits;
+} catch (err) {
+console.error("Failed to fetch stats:", err);
+}
+}
+
+// Refresh every 1000ms (1 second)
+setInterval(fetchStats, 1000);
+fetchStats(); // Initial call
+</script>
+</body>
+</html>
