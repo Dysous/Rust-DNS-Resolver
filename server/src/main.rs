@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let dns_stats = Arc::clone(&shared_stats);
 
     tokio::spawn(async move {
-        if let Err(e) = run_udp_listener("0.0.0.0:2053", "dns_requests.log", dns_stats).await{
+        if let Err(e) = run_udp_listener("0.0.0.0:53", "dns_requests.log", dns_stats).await{
             eprintln!("Error: {}", e);
         }
     });

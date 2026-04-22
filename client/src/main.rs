@@ -75,7 +75,7 @@ async fn handle_input (input: &str) -> Result <(), Box<dyn Error>> {
         else if args[0] == "c" {//create custom resolver synced to our server
             let mut config = ResolverConfig::new();
             config.add_name_server(NameServerConfig {
-                socket_addr: "54.83.56.34:2053".parse()?,//our AWS EC2 instance
+                socket_addr: "54.83.56.34:53".parse()?,//our AWS EC2 instance
                 protocol: Protocol::Udp,
                 tls_dns_name: None,
                 trust_negative_responses: false,//won't cache if domain not found
