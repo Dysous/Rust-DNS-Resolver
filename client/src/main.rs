@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, io};
 use std::error::Error;
 use hickory_resolver::TokioAsyncResolver;
 use hickory_resolver::config::*;
@@ -16,64 +16,87 @@ use hickory_resolver::name_server::TokioConnectionProvider;
 //RTT
 //DNSSEC signature?
 
-//usage: client [hostname]
+//usage: client [d/c] [hostname]
 
 fn usage() {
-    println!("Usage (default resolver): dnsclient [-d] hostname");
-    println!("Usage (custom resolver): dnsclient [-c] hostname");
+    println!("Usage (default resolver): d hostname");
+    println!("Usage (custom resolver): c hostname");
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    //main loop waiting for input
+    loop{
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+
+        if input == "exit" {
+            break;
+        }
+        if input.is_empty() {
+            continue;
+        }
+
+        handle_input(input).await?;
+    }
+    Ok(())
+}
+
+
+async fn handle_input (input: &str) -> Result <(), Box<dyn Error>> {
     //Parse command-line arguments
-    let args: Vec<String> = env::args().collect();//grab args
+    let args: Vec<&str> = input.split_whitespace().collect();
+    let mut correct_args:bool  = true;
 
     //check amount
-    if args.len() < 3 {
-        eprintln!("Error: Missing arguments.");
+    if args.len() < 2 {
+        println!("Error: Missing arguments.");
         usage();
-        return Err("Not enough arguments".into());
+        correct_args = false;
     }
     //check flags
-    if args[1] != "-d" && args[1] != "-c" {
-        eprintln!("Error: Invalid flag '{}'. Use -d or -c.", args[1]);
+    if args.len() > 1 && args[0] != "d" && args[0] != "c" {
+        println!("Error: Invalid flag '{}'. Use d or c.", args[0]);
         usage();
-        return Err("Invalid flag".into());
+        correct_args = false;
     }
 
-    let hostname = args[2].clone();
-    println!("Querying hostname: \"{}\"...", args[2]);
+    if(correct_args) {
+        let hostname = args[1];
+        println!("Querying hostname: \"{}\"...", args[1]);
 
-    let resolver = if args[1] == "-d" {//default dns resolver
-        TokioAsyncResolver::tokio(
-            ResolverConfig::default(),
-            ResolverOpts::default(),
-        )
+        let resolver = if args[0] == "d" {//default dns resolver
+            TokioAsyncResolver::tokio(
+                ResolverConfig::default(),
+                ResolverOpts::default(),
+            )
+        }
+        else if args[0] == "c" {//create custom resolver synced to our server
+            let mut config = ResolverConfig::new();
+            config.add_name_server(NameServerConfig {
+                socket_addr: "54.83.56.34:2053".parse()?,//our AWS EC2 instance
+                protocol: Protocol::Udp,
+                tls_dns_name: None,
+                trust_negative_responses: false,//won't cache if domain not found
+                bind_addr: None,
+            });
+
+            TokioAsyncResolver::tokio(config, ResolverOpts::default())
+        } else {
+            eprintln!("Error: Invalid flag '{}'", args[0]);
+            usage();
+            return Err("Invalid flag".into());
+        };
+
+        //IPv4 lookup
+        let response = resolver.lookup_ip(hostname).await?;
+
+        println!("IP addresses for {}:", args[1]);
+        for ip in response {
+            println!("{}", ip);
+        }
     }
-    else if args[1] == "-c" {//create custom resolver synced to our server
-        let mut config = ResolverConfig::new();
-        config.add_name_server(NameServerConfig {
-            socket_addr: "54.83.56.34:2053".parse()?,//our AWS EC2 instance
-            protocol: Protocol::Udp,
-            tls_dns_name: None,
-            trust_negative_responses: false,//won't cache if domain not found
-            bind_addr: None,
-        });
 
-        TokioAsyncResolver::tokio(config, ResolverOpts::default())
-    } else {
-        eprintln!("Error: Invalid flag '{}'", args[1]);
-        usage();
-        return Err("Invalid flag".into());
-    };
-
-    //IPv4 lookup
-    let response = resolver.lookup_ip(hostname).await?;
-
-    println!("IP addresses for {}:", args[2]);
-    for ip in response {
-        println!("{}", ip);
-    }
-
-    Ok(())
+   Ok(())
 }
