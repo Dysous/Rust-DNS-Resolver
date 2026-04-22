@@ -13,8 +13,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{ Ordering};
 use tokio::net::UdpSocket;
-use axum::{routing::get, Router, extract::State, Json};
-use tower_http::services::ServeDir;
+use axum::{extract::State, routing::get, Router, Json};
+use tower_http::services::{ServeDir, ServeFile};
 
 #[derive(Clone)]
 struct CacheEntry {
@@ -65,7 +65,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let web_stats = Arc::clone(&shared_stats);
     let static_dir = format!("{}/static", env!("CARGO_MANIFEST_DIR"));
+    let index_file = format!("{}/index.html", static_dir);
     let app = Router::new()
+        .route_service("/", ServeFile::new(index_file))
         .route("/api/stats", get(move | State(s): State<Arc<stats::DnsStats>> | async move {
             let domain_map = s.domain_counts.lock().unwrap();
             Json(serde_json::json!({
