@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }))
         }))
         .with_state(web_stats)
-        .fallback_service(ServeDir::new("static"));
+        .fallback_service(ServeDir::new("server/static"));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 80));
     println!("Web Monitor Live At http://{}", addr);
