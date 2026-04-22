@@ -80,7 +80,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_state(web_stats)
         .fallback_service(ServeDir::new(static_dir));
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 80));
     println!("Web Monitor Live At http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
