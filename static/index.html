@@ -10,6 +10,7 @@
             --card: #1e293b;
             --text: #f8fafc;
             --accent: #38bdf8;
+            --secondary: #94a3b8;
         }
         body {
             background-color: var(--bg);
@@ -18,39 +19,85 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            height: 100vh;
+            padding: 40px 20px;
             margin: 0;
+            min-height: 100vh;
+        }
+        h1 {
+            margin-bottom: 2rem;
+            font-weight: 300;
+            letter-spacing: -0.025em;
         }
         .dashboard {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 20px;
-            width: 90%;
-            max-width: 600px;
+            width: 100%;
+            max-width: 800px;
         }
         .stat-card {
             background: var(--card);
-            padding: 2rem;
+            padding: 1.5rem;
             border-radius: 12px;
             text-align: center;
             border: 1px solid #334155;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .full-width {
+            grid-column: span 2;
+            text-align: left;
         }
         .stat-value {
-            font-size: 3rem;
+            font-size: 2.5rem;
             font-weight: 800;
             color: var(--accent);
-            margin: 0;
+            margin: 0.5rem 0;
         }
         .stat-label {
             text-transform: uppercase;
             letter-spacing: 0.1em;
-            font-size: 0.875rem;
-            color: #94a3b8;
+            font-size: 0.75rem;
+            color: var(--secondary);
+            margin: 0;
         }
-        h1 { margin-bottom: 2rem; font-weight: 300; }
-        .status { margin-top: 2rem; font-size: 0.75rem; color: #4ade80; }
+        .domain-list {
+            list-style: none;
+            padding: 0;
+            margin: 1rem 0 0 0;
+        }
+        .domain-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #334155;
+            font-size: 0.9rem;
+        }
+        .domain-item:last-child {
+            border-bottom: none;
+        }
+        .domain-name {
+            color: var(--accent);
+            font-family: 'Fira Code', monospace;
+        }
+        .domain-count {
+            color: var(--secondary);
+        }
+        .status {
+            margin-top: 3rem;
+            font-size: 0.75rem;
+            color: #4ade80;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .dot {
+            height: 8px;
+            width: 8px;
+            background-color: #4ade80;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 8px #4ade80;
+        }
     </style>
 </head>
 <body>
@@ -58,36 +105,79 @@
 <h1>DNS Network Monitor</h1>
 
 <div class="dashboard">
-<div class="stat-card">
-<p id="total-queries" class="stat-value">0</p>
-<p class="stat-label">Total Queries</p>
-</div>
-<div class="stat-card">
-<p id="cache-hits" class="stat-value">0</p>
-<p class="stat-label">Cache Hits</p>
-</div>
+    <div class="stat-card">
+        <p class="stat-label">Total Queries</p>
+        <p id="total-queries" class="stat-value">0</p>
+    </div>
+    <div class="stat-card">
+        <p class="stat-label">Cache Hits</p>
+        <p id="cache-hits" class="stat-value">0</p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">Avg Latency</p>
+        <p id="avg-latency" class="stat-value">0</p>
+        <p class="stat-label" style="text-transform: lowercase;">ms</p>
+    </div>
+    <div class="stat-card">
+        <p class="stat-label">Cache Efficiency</p>
+        <p id="cache-percent" class="stat-value">0</p>
+        <p class="stat-label">%</p>
+    </div>
+
+    <div class="stat-card full-width">
+        <p class="stat-label">Top Queried Domains</p>
+        <div id="top-domains" class="domain-list">
+            <div class="domain-item"><span class="domain-name">Waiting for traffic...</span></div>
+        </div>
+    </div>
 </div>
 
-<div class="status">● System Live (EC2 Virginia)</div>
+<div class="status"><span class="dot"></span> System Live (EC2 Cloud Node)</div>
 
 <script>
- async function fetchStats() {
-try {
-// This calls your Rust Axum API
-const response = await fetch('/api/stats');
-    const data = await response.json();
+    async function fetchStats() {
+        try {
+            const response = await fetch('/api/stats');
+            const data = await response.json();
 
-// Update the UI with the numbers from your DnsStats struct
-document.getElementById('total-queries').innerText = data.queries;
-    document.getElementById('cache-hits').innerText = data.cache_hits;
-} catch (err) {
-console.error("Failed to fetch stats:", err);
-}
-}
+            // 1. Basic Stats
+            document.getElementById('total-queries').innerText = data.queries;
+            document.getElementById('cache-hits').innerText = data.cache_hits;
 
-// Refresh every 1000ms (1 second)
-setInterval(fetchStats, 1000);
-fetchStats(); // Initial call
+            // 2. Latency
+            document.getElementById('avg-latency').innerText = data.avg_latency_ms || 0;
+
+            // 3. Efficiency Calculation
+            if (data.queries > 0) {
+                const efficiency = ((data.cache_hits / data.queries) * 100).toFixed(1);
+                document.getElementById('cache-percent').innerText = efficiency;
+            }
+
+            // 4. Top Domains Logic
+            const domainContainer = document.getElementById('top-domains');
+
+            // Transform object into sorted array
+            const sortedDomains = Object.entries(data.top_domains || {})
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 5);
+
+            if (sortedDomains.length > 0) {
+                domainContainer.innerHTML = sortedDomains.map(([name, count]) => `
+                    <div class="domain-item">
+                        <span class="domain-name">${name}</span>
+                        <span class="domain-count">${count} hits</span>
+                    </div>
+                `).join('');
+            }
+        } catch (err) {
+            console.error("Dashboard sync error:", err);
+        }
+    }
+
+    // Update every second
+    setInterval(fetchStats, 1000);
+    fetchStats();
 </script>
 </body>
 </html>

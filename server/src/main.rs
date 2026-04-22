@@ -66,9 +66,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let web_stats = Arc::clone(&shared_stats);
     let app = Router::new()
         .route("/api/stats", get(move | State(s): State<Arc<stats::DnsStats>> | async move {
+            let domain_map = s.domain_counts.lock().unwrap();
             Json(serde_json::json!({
                 "queries": s.total_queries.load(Ordering::Relaxed),
                 "cache_hits": s.cache_hits.load(Ordering::Relaxed),
+                "avg_latency_ms": if s.total_queries.load(Ordering::Relaxed) > 0 {
+                    s.total_latency_ms.load(Ordering::Relaxed) / s.total_queries.load(Ordering::Relaxed)
+                } else { 0 },
+                "top_domains": *domain_map,
             }))
         }))
         .with_state(web_stats)
@@ -115,7 +120,12 @@ async fn handle_request(
     if packet.questions.is_empty() {
         return forward_to_upstream(request, "8.8.8.8:53").await;
     }
+
     let question = &packet.questions[0];
+
+    let domain_name = question.name.clone();
+    stats.record_domain(domain_name.clone());
+
     let cache_key = format!("{}|{}|{}", question.name, question.qtype, question.qclass);
 
     if let Some(entry) = cache.get(&cache_key) {
@@ -132,7 +142,12 @@ async fn handle_request(
         }
     }
     println!("cache miss: {}", cache_key);
+
+    let start = Instant::now();
     let response = forward_to_upstream(request, "8.8.8.8:53").await?;
+    let duration = start.elapsed().as_millis() as u64;
+
+    stats.total_latency_ms.fetch_add(duration, Ordering::Relaxed);
 
     if let Some(ttl) = extract_min_ttl(&response) {
         if ttl > 0 {
