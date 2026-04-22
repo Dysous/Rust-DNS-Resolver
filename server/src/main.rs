@@ -64,6 +64,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     let web_stats = Arc::clone(&shared_stats);
+    let static_dir = format!("{}/static", env!("CARGO_MANIFEST_DIR"));
     let app = Router::new()
         .route("/api/stats", get(move | State(s): State<Arc<stats::DnsStats>> | async move {
             let domain_map = s.domain_counts.lock().unwrap();
@@ -77,9 +78,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }))
         }))
         .with_state(web_stats)
-        .fallback_service(ServeDir::new("server/static"));
+        .fallback_service(ServeDir::new(static_dir));
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 80));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     println!("Web Monitor Live At http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
