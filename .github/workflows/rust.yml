@@ -48,14 +48,14 @@ jobs:
           --protocol tcp --port 22 \
           --cidr ${RUNNER_IP}/32
 
-    - name: Copy binary to EC2
+    - name: Copy binary and static to EC2
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ secrets.EC2_HOST }}
         username: ubuntu
         key: ${{ secrets.EC2_SSH_KEY }}
-        source: target/release/server
-        target: /home/ubuntu/dns-server/
+        source: "target/release/server, static/"
+        target: "/home/ubuntu/dns-server/"
 
     - name: Restart DNS server on EC2
       uses: appleboy/ssh-action@v1.0.3

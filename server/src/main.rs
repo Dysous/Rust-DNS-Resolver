@@ -64,8 +64,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     let web_stats = Arc::clone(&shared_stats);
-    let static_dir = format!("{}/static", env!("CARGO_MANIFEST_DIR"));
-    let index_file = format!("{}/index.html", static_dir);
+    let static_dir = "static";
+    let index_file = "static/index.html";
     let app = Router::new()
         .route_service("/", ServeFile::new(index_file))
         .route("/api/stats", get(move | State(s): State<Arc<stats::DnsStats>> | async move {
