@@ -1,6 +1,8 @@
 mod packet;
 mod stats;
 mod blocklist;
+mod threat;
+use threat::ThreatDetector;
 //dns packet file
 
 use std::error::Error;
@@ -101,6 +103,7 @@ async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats
 
     let mut buf = [0u8; 512];
     let mut cache: HashMap<String, CacheEntry> = HashMap::new();
+    let mut threat_detector = ThreatDetector::new();
 
     loop {
         let (size, src) = socket.recv_from(&mut buf).await?;
@@ -111,16 +114,17 @@ async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats
         print_hex(request);
 
         stats.total_queries.fetch_add(1, Ordering::Relaxed);
-        let response = handle_request(request, src, &mut cache, &stats, &blocklist).await?;
+        let response = handle_request(request, src, &mut cache, &stats, &blocklist, &mut threat_detector).await?;
         socket.send_to(&response, src).await?;
     }
 }
 
 async fn handle_request(
-    request: &[u8], _src: SocketAddr,
+    request: &[u8], src: SocketAddr,
     cache: &mut HashMap<String, CacheEntry>,
     stats: &stats::DnsStats,
-    blocklist: &blocklist::Blocklist
+    blocklist: &blocklist::Blocklist,
+    threat_detector: &mut ThreatDetector,
 )-> Result<Vec<u8>, Box<dyn Error>> {
     evict_expired(cache);
 
@@ -133,11 +137,28 @@ async fn handle_request(
     let domain_name = question.name.clone();
     stats.record_domain(domain_name.clone());
 
+    let threat_result = threat_detector.analyze(src.ip(), &domain_name);
+    if threat_result.flagged {
+        println!(
+            "THREAT FLAGGED: {} score={} reasons={:?}",
+            domain_name,
+            threat_result.score,
+            threat_result.reasons
+        );
+        log_threat(
+            "flagged_queries.log",
+            src,
+            &domain_name,
+            threat_result.score,
+            &threat_result.reasons,
+        )?;
+    }
+
     //check if blocked here
     if blocklist.is_blocked(&domain_name) {
         println!("Blocked domain: {}", domain_name);
         //send NXDOMAIN to claim it doesn't exist instead of not returning
-        return Ok (build_notimpl_response(request));
+        return Ok (build_nxdomain_response(request));
     }
 
     let cache_key = format!("{}|{}|{}", question.name, question.qtype, question.qclass);
@@ -227,6 +248,24 @@ fn log_request(log_path: &str, src: std::net::SocketAddr, request: &[u8]) -> Res
     Ok(())
 }
 
+fn log_threat(
+    log_path: &str,
+    src: SocketAddr,
+    domain: &str,
+    score: u32,
+    reasons: &[String],
+) -> Result<(), Box<dyn Error>> {
+    let mut file = OpenOptions::new().create(true).append(true).open(log_path)?;
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+
+    writeln!(file, "timestamp: {}", ts)?;
+    writeln!(file, "source: {}", src)?;
+    writeln!(file, "domain: {}", domain)?;
+    writeln!(file, "threat_score: {}", score)?;
+    writeln!(file, "reasons: {:?}", reasons)?;
+    writeln!(file, "----")?;
+    Ok(())
+}
 
 async fn forward_to_upstream(request: &[u8], upstream: &str) -> Result<Vec<u8>, Box<dyn Error>> {
     let socket = UdpSocket::bind("0.0.0.0:0").await?;
