@@ -1,5 +1,6 @@
 mod packet;
 mod stats;
+mod blocklist;
 //dns packet file
 
 use std::error::Error;
@@ -15,6 +16,7 @@ use std::sync::atomic::{ Ordering};
 use tokio::net::UdpSocket;
 use axum::{extract::State, routing::get, Router, Json};
 use tower_http::services::{ServeDir, ServeFile};
+use crate::blocklist::Blocklist;
 
 #[derive(Clone)]
 struct CacheEntry {
@@ -24,18 +26,18 @@ struct CacheEntry {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    //website stats/domain
     let shared_stats = Arc::new(stats::DnsStats::new());
-
     let domain = "group8-monitor";
     let token = "960d0d55-e9ce-4846-83c9-188350fde697";
-
     tokio::spawn(async move {
         let client = reqwest::Client::new();
         let url = format!("http://www.duckdns.org/update?domains={}&token={}", domain, token);
 
         let mut interval = tokio::time::interval(Duration::from_secs(60));
 
-        loop {
+        loop {//update duckdns binding loop
+            //TODO pfsense creates an warning that takes down the actual server website
             interval.tick().await;
             match client.get(&url).send().await {
                 Ok(resp) => {
@@ -53,16 +55,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-
-
+    let blocklist = Arc::new(blocklist::Blocklist::load("hosts.txt"));
     let dns_stats = Arc::clone(&shared_stats);
+    let dns_blocklist = Arc::clone(&blocklist);
+
 
     tokio::spawn(async move {
-        if let Err(e) = run_udp_listener("0.0.0.0:53", "dns_requests.log", dns_stats).await{
+        if let Err(e) = run_udp_listener("0.0.0.0:53", "dns_requests.log", dns_stats, dns_blocklist).await {
             eprintln!("Error: {}", e);
         }
     });
 
+    //website routing
     let web_stats = Arc::clone(&shared_stats);
     let static_dir = "static";
     let index_file = "static/index.html";
@@ -91,7 +95,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 }
 
-async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats>) -> Result<(), Box<dyn Error>> {
+async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats>, blocklist: Arc<Blocklist>) -> Result<(), Box<dyn Error>> {
     let socket = UdpSocket::bind(bind_addr).await?;
     println!("UDP listener running on {}", bind_addr);
 
@@ -107,7 +111,7 @@ async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats
         print_hex(request);
 
         stats.total_queries.fetch_add(1, Ordering::Relaxed);
-        let response = handle_request(request, src, &mut cache, &stats).await?;
+        let response = handle_request(request, src, &mut cache, &stats, &blocklist).await?;
         socket.send_to(&response, src).await?;
     }
 }
@@ -116,6 +120,7 @@ async fn handle_request(
     request: &[u8], _src: SocketAddr,
     cache: &mut HashMap<String, CacheEntry>,
     stats: &stats::DnsStats,
+    blocklist: &blocklist::Blocklist
 )-> Result<Vec<u8>, Box<dyn Error>> {
     evict_expired(cache);
 
@@ -125,9 +130,15 @@ async fn handle_request(
     }
 
     let question = &packet.questions[0];
-
     let domain_name = question.name.clone();
     stats.record_domain(domain_name.clone());
+
+    //check if blocked here
+    if blocklist.is_blocked(&domain_name) {
+        println!("Blocked domain: {}", domain_name);
+        //send NXDOMAIN to claim it doesn't exist instead of not returning
+        return Ok (build_notimpl_response(request));
+    }
 
     let cache_key = format!("{}|{}|{}", question.name, question.qtype, question.qclass);
 
@@ -216,13 +227,7 @@ fn log_request(log_path: &str, src: std::net::SocketAddr, request: &[u8]) -> Res
     Ok(())
 }
 
-fn to_hex(bytes: &[u8]) -> String {
-    bytes.iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-#[allow(dead_code)]
+
 async fn forward_to_upstream(request: &[u8], upstream: &str) -> Result<Vec<u8>, Box<dyn Error>> {
     let socket = UdpSocket::bind("0.0.0.0:0").await?;
     socket.send_to(request, upstream).await?;
@@ -233,6 +238,32 @@ async fn forward_to_upstream(request: &[u8], upstream: &str) -> Result<Vec<u8>, 
         Ok(Err(e)) => Err(e.into()),
         Err(_) => Err("Upstream connection timed out".into()),
     }
+}
+
+fn build_nxdomain_response(request: &[u8]) -> Vec<u8> {
+    if request.len() < 12 {
+        return Vec::new();
+    }
+
+    let mut response = request.to_vec();
+    // QR=1 (response), Opcode=0 (std query), AA=0, TC=0, RD=1, RA=1, RCODE=3 (this sets NXDOMAIN)
+    response[2] = 0x81; //QR + RD
+    response[3] = 0x83; //RA + RCODE (3)
+
+    //zero out the answer/authority/additional field counts, there is no answers
+    response[6] = 0x00; response[7] = 0x00;
+    response[8] = 0x00; response[9] = 0x00;
+    response[10] = 0x00; response[11] = 0x00;
+
+    response
+}
+
+//helpers
+fn to_hex(bytes: &[u8]) -> String {
+    bytes.iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn print_hex(bytes: &[u8]) {
