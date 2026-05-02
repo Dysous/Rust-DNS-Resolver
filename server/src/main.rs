@@ -137,7 +137,7 @@ async fn handle_request(
     if blocklist.is_blocked(&domain_name) {
         println!("Blocked domain: {}", domain_name);
         //send NXDOMAIN to claim it doesn't exist instead of not returning
-        return Ok (build_notimpl_response(request));
+        return Ok (build_nxdomain_response(request));
     }
 
     let cache_key = format!("{}|{}|{}", question.name, question.qtype, question.qclass);
