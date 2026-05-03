@@ -3,6 +3,7 @@ mod stats;
 mod blocklist;
 mod threat;
 use threat::ThreatDetector;
+mod doh;
 //dns packet file
 
 use std::error::Error;
@@ -13,23 +14,27 @@ use std::net::{SocketAddr, };
 use std::time::*;
 use std::collections::HashMap;
 
-use std::sync::Arc;
+use std::sync::{Arc};
 use std::sync::atomic::{ Ordering};
 use tokio::net::UdpSocket;
 use axum::{extract::State, routing::get, Router, Json};
+use axum::routing::post;
 use tower_http::services::{ServeDir, ServeFile};
 use crate::blocklist::Blocklist;
+use crate::doh::DoHState;
+use tokio::sync::Mutex;
 
 #[derive(Clone)]
-struct CacheEntry {
-    response: Vec<u8>,
-    expires_at: Instant,
+pub struct CacheEntry {
+    pub response: Vec<u8>,
+    pub expires_at: Instant,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     //website stats/domain
     let shared_stats = Arc::new(stats::DnsStats::new());
+    let shared_cache = Arc::new(Mutex::new(HashMap::new()));
     let domain = "group8-monitor";
     let token = "960d0d55-e9ce-4846-83c9-188350fde697";
     tokio::spawn(async move {
@@ -38,7 +43,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         let mut interval = tokio::time::interval(Duration::from_secs(60));
 
-        loop {//update duckdns binding loop
+        loop {//update duck dns binding loop
             //TODO pfsense creates an warning that takes down the actual server website
             interval.tick().await;
             match client.get(&url).send().await {
@@ -57,13 +62,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    let blocklist = Arc::new(blocklist::Blocklist::load("hosts.txt"));
+    let shared_blocklist = Arc::new(Blocklist::load("hosts.txt"));
     let dns_stats = Arc::clone(&shared_stats);
-    let dns_blocklist = Arc::clone(&blocklist);
+    let dns_blocklist = Arc::clone(&shared_blocklist);
 
-
+    //shared cache for udp listener and the DoH handling
+    let dns_cache = Arc::clone(&shared_cache);
     tokio::spawn(async move {
-        if let Err(e) = run_udp_listener("0.0.0.0:53", "dns_requests.log", dns_stats, dns_blocklist).await {
+        if let Err(e) = run_udp_listener("0.0.0.0:53", "dns_requests.log", dns_stats, dns_blocklist, dns_cache).await {
             eprintln!("Error: {}", e);
         }
     });
@@ -72,6 +78,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let web_stats = Arc::clone(&shared_stats);
     let static_dir = "static";
     let index_file = "static/index.html";
+
+    let doh_state = DoHState {
+        stats: Arc::clone(&shared_stats),
+        blocklist: Arc::clone(&shared_blocklist),
+        cache: Arc::clone(&shared_cache),
+    };
+
     let app = Router::new()
         .route_service("/", ServeFile::new(index_file))
         .route("/api/stats", get(move | State(s): State<Arc<stats::DnsStats>> | async move {
@@ -86,18 +99,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }))
         }))
         .with_state(web_stats)
+        .nest(//dns-query endpoint handles DNS over HTTPS requests (encrypted DNS)
+            "/dns-query",
+            Router::new().route("/", post(doh::doh_query_handler))
+                .with_state(doh_state),
+        )
         .fallback_service(ServeDir::new(static_dir));
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 80));
-    println!("Web Monitor Live At http://{}", addr);
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    println!("Web Monitor Live At https://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    //getting http connection info now for /dns-query integration with stats later
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
 
     Ok(())
 
 }
 
-async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats>, blocklist: Arc<Blocklist>) -> Result<(), Box<dyn Error>> {
+async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats>, blocklist: Arc<Blocklist>, cache: Arc<Mutex<HashMap<String, CacheEntry>>> ) -> Result<(), Box<dyn Error>> {
     let socket = UdpSocket::bind(bind_addr).await?;
     println!("UDP listener running on {}", bind_addr);
 
@@ -114,16 +133,19 @@ async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats
         print_hex(request);
 
         stats.total_queries.fetch_add(1, Ordering::Relaxed);
-        let response = handle_request(request, src, &mut cache, &stats, &blocklist, &mut threat_detector).await?;
+        let response = {//quickly lock shared resource
+            let mut guard = cache.lock().await;
+            handle_request(request, src, &mut guard, &stats, &blocklist,&mut threat_detector).await?
+        };
         socket.send_to(&response, src).await?;
     }
 }
 
-async fn handle_request(
+pub async fn handle_request(
     request: &[u8], src: SocketAddr,
     cache: &mut HashMap<String, CacheEntry>,
     stats: &stats::DnsStats,
-    blocklist: &blocklist::Blocklist,
+    blocklist: &Blocklist,
     threat_detector: &mut ThreatDetector,
 )-> Result<Vec<u8>, Box<dyn Error>> {
     evict_expired(cache);
@@ -235,7 +257,7 @@ fn build_notimpl_response(request: &[u8]) -> Vec<u8> {
 }
 
 //log helper to debug received requests
-fn log_request(log_path: &str, src: std::net::SocketAddr, request: &[u8]) -> Result<(), Box<dyn Error>> {
+fn log_request(log_path: &str, src: SocketAddr, request: &[u8]) -> Result<(), Box<dyn Error>> {
     let mut file = OpenOptions::new().create(true).append(true).open(log_path)?;
     let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
