@@ -121,7 +121,6 @@ async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats
     println!("UDP listener running on {}", bind_addr);
 
     let mut buf = [0u8; 512];
-    let mut cache: HashMap<String, CacheEntry> = HashMap::new();
     let mut threat_detector = ThreatDetector::new();
 
     loop {
