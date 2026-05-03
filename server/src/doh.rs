@@ -19,6 +19,7 @@ use axum::{
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
+use crate::threat::ThreatDetector;
 
 #[derive(Clone)]
 pub struct DoHState {
@@ -56,9 +57,10 @@ pub async fn doh_query_handler(
     }
 
     let mut cache = state.cache.lock().await;
+    let mut threat_detector = ThreatDetector::new();
 
 
-    match handle_request(&body, src, &mut cache, &state.stats, &state.blocklist).await {
+    match handle_request(&body, src, &mut cache, &state.stats, &state.blocklist,&mut threat_detector).await {
         Ok(response_bytes) => {
             (
                 StatusCode::OK,
