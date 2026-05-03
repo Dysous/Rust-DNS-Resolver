@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         let mut interval = tokio::time::interval(Duration::from_secs(60));
 
-        loop {//update duckdns binding loop
+        loop {//update duck dns binding loop
             //TODO pfsense creates an warning that takes down the actual server website
             interval.tick().await;
             match client.get(&url).send().await {
@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    let shared_blocklist = Arc::new(blocklist::Blocklist::load("hosts.txt"));
+    let shared_blocklist = Arc::new(Blocklist::load("hosts.txt"));
     let dns_stats = Arc::clone(&shared_stats);
     let dns_blocklist = Arc::clone(&shared_blocklist);
 
@@ -105,7 +105,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .fallback_service(ServeDir::new(static_dir));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
-    println!("Web Monitor Live At http://{}", addr);
+    println!("Web Monitor Live At https://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     //getting http connection info now for /dns-query integration with stats later
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
@@ -141,7 +141,7 @@ pub async fn handle_request(
     request: &[u8], _src: SocketAddr,
     cache: &mut HashMap<String, CacheEntry>,
     stats: &stats::DnsStats,
-    blocklist: &blocklist::Blocklist
+    blocklist: &Blocklist
 )-> Result<Vec<u8>, Box<dyn Error>> {
     evict_expired(cache);
 
@@ -235,7 +235,7 @@ fn build_notimpl_response(request: &[u8]) -> Vec<u8> {
 }
 
 //log helper to debug received requests
-fn log_request(log_path: &str, src: std::net::SocketAddr, request: &[u8]) -> Result<(), Box<dyn Error>> {
+fn log_request(log_path: &str, src: SocketAddr, request: &[u8]) -> Result<(), Box<dyn Error>> {
     let mut file = OpenOptions::new().create(true).append(true).open(log_path)?;
     let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
