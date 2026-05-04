@@ -4,6 +4,7 @@ mod blocklist;
 mod threat;
 use threat::ThreatDetector;
 mod doh;
+mod dnssec;
 //dns packet file
 
 use std::error::Error;
@@ -23,6 +24,7 @@ use tower_http::services::{ServeDir, ServeFile};
 use crate::blocklist::Blocklist;
 use crate::doh::DoHState;
 use tokio::sync::Mutex;
+use crate::dnssec::DnssecSigner;
 
 #[derive(Clone)]
 pub struct CacheEntry {
@@ -32,9 +34,18 @@ pub struct CacheEntry {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let rng = ring::rand::SystemRandom::new();
+    let pk8_bytes = ring::signature::EcdsaKeyPair::generate_pkcs8(&ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING, &rng)
+        .expect("Failed to generate PKCS8 BYTES");
+    let key_pair = ring::signature::EcdsaKeyPair::from_pkcs8(&ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING, pk8_bytes.as_ref(), &rng)
+        .expect("Failed to create key pair from PKCS8");
+    let signer = Arc::new(dnssec::DnssecSigner::new(key_pair));
+
     //website stats/domain
     let shared_stats = Arc::new(stats::DnsStats::new());
     let shared_cache = Arc::new(Mutex::new(HashMap::new()));
+
+
     let domain = "group8-monitor";
     let token = "960d0d55-e9ce-4846-83c9-188350fde697";
     tokio::spawn(async move {
@@ -68,8 +79,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     //shared cache for udp listener and the DoH handling
     let dns_cache = Arc::clone(&shared_cache);
+    let dns_signer = Arc::clone(&signer);
+
     tokio::spawn(async move {
-        if let Err(e) = run_udp_listener("0.0.0.0:53", "dns_requests.log", dns_stats, dns_blocklist, dns_cache).await {
+        if let Err(e) = run_udp_listener("0.0.0.0:53", "dns_requests.log", dns_stats, dns_blocklist, dns_cache, dns_signer).await {
             eprintln!("Error: {}", e);
         }
     });
@@ -83,6 +96,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         stats: Arc::clone(&shared_stats),
         blocklist: Arc::clone(&shared_blocklist),
         cache: Arc::clone(&shared_cache),
+        signer: Arc::clone(&signer),
     };
 
     let app = Router::new()
@@ -116,7 +130,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 }
 
-async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats>, blocklist: Arc<Blocklist>, cache: Arc<Mutex<HashMap<String, CacheEntry>>> ) -> Result<(), Box<dyn Error>> {
+async fn run_udp_listener(bind_addr: &str,
+                          log: &str,
+                          stats: Arc<stats::DnsStats>,
+                          blocklist: Arc<Blocklist>,
+                          cache: Arc<Mutex<HashMap<String, CacheEntry>>>,
+                          signer: Arc<DnssecSigner>,
+
+) -> Result<(), Box<dyn Error>> {
     let socket = UdpSocket::bind(bind_addr).await?;
     println!("UDP listener running on {}", bind_addr);
 
@@ -134,8 +155,9 @@ async fn run_udp_listener(bind_addr: &str, log: &str, stats: Arc<stats::DnsStats
         stats.total_queries.fetch_add(1, Ordering::Relaxed);
         let response = {//quickly lock shared resource
             let mut guard = cache.lock().await;
-            handle_request(request, src, &mut guard, &stats, &blocklist,&mut threat_detector).await?
+            handle_request(request, src, &mut guard, &stats, &blocklist,&mut threat_detector, &signer).await?
         };
+        // print_hex(&response);
         socket.send_to(&response, src).await?;
     }
 }
@@ -146,6 +168,7 @@ pub async fn handle_request(
     stats: &stats::DnsStats,
     blocklist: &Blocklist,
     threat_detector: &mut ThreatDetector,
+    signer: &DnssecSigner,
 )-> Result<Vec<u8>, Box<dyn Error>> {
     evict_expired(cache);
 
@@ -156,6 +179,12 @@ pub async fn handle_request(
 
     let question = &packet.questions[0];
     let domain_name = question.name.clone();
+    let domain_wire = dnssec::name_to_wire(&domain_name);
+
+    if question.qtype == 48 {
+        return Ok(signer.build_dnskey_answer(request, &domain_wire));
+    }
+
     stats.record_domain(domain_name.clone());
 
     let threat_result = threat_detector.analyze(src.ip(), &domain_name);
@@ -194,7 +223,7 @@ pub async fn handle_request(
                 cached_response[0] = request[0];
                 cached_response[1] = request[1];
             }
-            return Ok(cached_response);
+            return Ok(signer.sign_response(cached_response, &domain_wire));
         }
     }
     println!("cache miss: {}", cache_key);

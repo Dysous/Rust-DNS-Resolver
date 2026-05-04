@@ -10,6 +10,7 @@ use crate::blocklist::Blocklist;
 use crate::stats::DnsStats;
 use crate::{CacheEntry, handle_request};
 use axum::extract::ConnectInfo;
+use crate::dnssec::DnssecSigner;
 
 
 
@@ -26,6 +27,7 @@ pub struct DoHState {
     pub stats: Arc<DnsStats>,
     pub blocklist: Arc<Blocklist>,
     pub cache: Arc<Mutex<HashMap<String, CacheEntry>>>,
+    pub signer: Arc<DnssecSigner>, 
 }
 
 //body should be raw DNS wire format query
@@ -60,7 +62,7 @@ pub async fn doh_query_handler(
     let mut threat_detector = ThreatDetector::new();
 
 
-    match handle_request(&body, src, &mut cache, &state.stats, &state.blocklist,&mut threat_detector).await {
+    match handle_request(&body, src, &mut cache, &state.stats, &state.blocklist,&mut threat_detector, &state.signer).await {
         Ok(response_bytes) => {
             (
                 StatusCode::OK,
