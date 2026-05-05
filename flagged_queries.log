@@ -1,0 +1,36 @@
+timestamp: 1778021362
+source: 127.0.0.1:39870
+domain: a9sd8f7as9df10xq92k3m4z.tunneltest.com
+threat_score: 80
+reasons: ["high entropy domain (4.50)", "likely DNS tunneling pattern"]
+----
+timestamp: 1778021362
+source: 127.0.0.1:57626
+domain: a9sd8f7as9df11xq92k3m4z.tunneltest.com
+threat_score: 80
+reasons: ["high entropy domain (4.45)", "likely DNS tunneling pattern"]
+----
+timestamp: 1778021362
+source: 127.0.0.1:39612
+domain: a9sd8f7as9df12xq92k3m4z.tunneltest.com
+threat_score: 80
+reasons: ["high entropy domain (4.45)", "likely DNS tunneling pattern"]
+----
+timestamp: 1778021362
+source: 127.0.0.1:54502
+domain: a9sd8f7as9df13xq92k3m4z.tunneltest.com
+threat_score: 80
+reasons: ["high entropy domain (4.45)", "likely DNS tunneling pattern"]
+----
+timestamp: 1778021363
+source: 127.0.0.1:35830
+domain: a9sd8f7as9df14xq92k3m4z.tunneltest.com
+threat_score: 80
+reasons: ["high entropy domain (4.45)", "likely DNS tunneling pattern"]
+----
+timestamp: 1778021364
+source: 127.0.0.1:33400
+domain: a9sd8f7as9df15xq92k3m4z.tunneltest.com
+threat_score: 80
+reasons: ["high entropy domain (4.50)", "likely DNS tunneling pattern"]
+----

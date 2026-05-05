@@ -161,9 +161,10 @@ pub async fn handle_request(
     let threat_result = threat_detector.analyze(src.ip(), &domain_name);
     if threat_result.flagged {
         println!(
-            "THREAT FLAGGED: {} score={} reasons={:?}",
+            "THREAT FLAGGED: {} score={} tunneling={} reasons={:?}",
             domain_name,
             threat_result.score,
+            threat_result.likely_tunneling,
             threat_result.reasons
         );
         log_threat(

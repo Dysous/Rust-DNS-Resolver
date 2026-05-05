@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
@@ -7,12 +7,33 @@ pub struct ThreatResult {
     pub score: u32,
     pub reasons: Vec<String>,
     pub flagged: bool,
+    pub likely_tunneling: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TunnelEvidence {
+    pub domain: String,
+    pub sample_queries: Vec<String>,
+    pub entropy_scores: Vec<f64>,
+    pub unique_subdomain_count: usize,
+    pub last_seen_secs_ago: u64,
+}
+
+#[derive(Debug)]
+struct DomainQueryEvent {
+    full_query: String,
+    subdomain: String,
+    entropy: f64,
+    seen_at: Instant,
 }
 
 #[derive(Debug)]
 pub struct ThreatDetector {
     query_times_by_ip: HashMap<IpAddr, Vec<Instant>>,
     subdomains_by_domain: HashMap<String, HashSet<String>>,
+    // per domain history for tunneling recognition
+    domain_events: HashMap<String, VecDeque<DomainQueryEvent>>,
+    tunneling_watchlist: HashMap<String, TunnelEvidence>,
 }
 
 impl ThreatDetector {
@@ -20,6 +41,8 @@ impl ThreatDetector {
         Self {
             query_times_by_ip: HashMap::new(),
             subdomains_by_domain: HashMap::new(),
+            domain_events: HashMap::new(),
+            tunneling_watchlist: HashMap::new(),
         }
     }
 
@@ -50,11 +73,22 @@ impl ThreatDetector {
             reasons.push(format!("high subdomain diversity ({})", diversity));
         }
 
+        let likely_tunneling = self.track_tunneling_pattern(domain);
+        if likely_tunneling {
+            score += 50;
+            reasons.push("likely DNS tunneling pattern".to_string());
+        }
+
         ThreatResult {
             score,
             flagged: score >= 50,
             reasons,
+            likely_tunneling,
         }
+    }
+
+    pub fn watchlist(&self) -> Vec<TunnelEvidence> {
+        self.tunneling_watchlist.values().cloned().collect()
     }
 
     fn track_frequency(&mut self, src_ip: IpAddr) -> usize {
@@ -65,23 +99,104 @@ impl ThreatDetector {
         entries.retain(|t| now.duration_since(*t) <= window);
         entries.len()
     }
-    fn track_subdomain_diversity(&mut self, domain: &str) -> usize {
-        let parts: Vec<&str> = domain.split('.').collect();
-        if parts.len() < 3 {
-            return 0;
-        }
 
-        let base_domain = format!("{}.{}", parts[parts.len() - 2], parts[parts.len() - 1]);
-        let subdomain = parts[..parts.len() - 2].join(".");
+    fn track_subdomain_diversity(&mut self, domain: &str) -> usize {
+        let Some((base_domain, subdomain)) = split_base_and_subdomain(domain) else {
+            return 0;
+        };
+
         let entry = self.subdomains_by_domain.entry(base_domain).or_default();
 
         if !subdomain.is_empty() {
             entry.insert(subdomain);
         }
+
         entry.len()
     }
+
+    fn track_tunneling_pattern(&mut self, domain: &str) -> bool {
+        let Some((base_domain, subdomain)) = split_base_and_subdomain(domain) else {
+            return false;
+        };
+
+        if subdomain.is_empty() {
+            return false;
+        }
+
+        let now = Instant::now();
+        let window = Duration::from_secs(60);
+
+        let entropy = shannon_entropy(&subdomain);
+
+        let events = self.domain_events.entry(base_domain.clone()).or_default();
+
+        events.push_back(DomainQueryEvent {
+            full_query: domain.to_string(),
+            subdomain,
+            entropy,
+            seen_at: now,
+        });
+
+        while let Some(front) = events.front() {
+            if now.duration_since(front.seen_at) > window {
+                events.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        let unique_subdomains: HashSet<String> =
+            events.iter().map(|e| e.subdomain.clone()).collect();
+
+        let high_entropy_count = events.iter().filter(|e| e.entropy > 3.5).count();
+
+        let likely_tunneling =
+            unique_subdomains.len() >= 10 && high_entropy_count >= 8 && events.len() >= 10;
+
+        if likely_tunneling {
+            let sample_queries = events
+                .iter()
+                .take(5)
+                .map(|e| e.full_query.clone())
+                .collect();
+
+            let entropy_scores = events
+                .iter()
+                .take(5)
+                .map(|e| e.entropy)
+                .collect();
+
+            self.tunneling_watchlist.insert(
+                base_domain.clone(),
+                TunnelEvidence {
+                    domain: base_domain,
+                    sample_queries,
+                    entropy_scores,
+                    unique_subdomain_count: unique_subdomains.len(),
+                    last_seen_secs_ago: 0,
+                },
+            );
+        }
+        likely_tunneling
+    }
+}
+fn split_base_and_subdomain(domain: &str) -> Option<(String, String)> {
+    let parts: Vec<&str> = domain.trim_end_matches('.').split('.').collect();
+
+    if parts.len() < 3 {
+        return None;
+    }
+
+    let base_domain = format!("{}.{}", parts[parts.len() - 2], parts[parts.len() - 1]);
+    let subdomain = parts[..parts.len() - 2].join(".");
+
+    Some((base_domain, subdomain))
 }
 
+// Shannon entropy measures how random a domain looks.
+// Normal domains are predictable (low entropy), while encoded/tunneled data
+// appears random (high entropy). We use this as a signal to detect
+// suspicious queries like DNS tunneling
 fn shannon_entropy(input: &str) -> f64 {
     if input.is_empty() {
         return 0.0;
