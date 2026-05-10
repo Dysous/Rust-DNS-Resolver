@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNS Cache</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="navbar">
+    <a class="nav-link" href="index.html">Dashboard</a>
+    <a class="nav-link" href="logs.html">Logs</a>
+    <a class="nav-link active" href="cache.html">Cache</a>
+    <a class="nav-link" href="threats.html">Threats</a>
+</div>
+
+<h1>DNS Cache & Resolver Storage</h1>
+
+<div class="dashboard">
+
+    <!-- Cache Statistics -->
+    <div class="stat-card">
+        <p class="stat-label">Cached Records</p>
+        <p class="stat-value">0</p>
+
+        <p class="stat-label" style="font-size: 0.6rem;">
+            Active In-Memory Entries
+        </p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">Cache Hits</p>
+        <p class="stat-value">0</p>
+
+        <p class="stat-label" style="font-size: 0.6rem;">
+            Requests Served From Cache
+        </p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">Cache Misses</p>
+        <p class="stat-value">0</p>
+
+        <p class="stat-label" style="font-size: 0.6rem;">
+            Upstream Resolver Forwarding
+        </p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">TTL Expirations</p>
+        <p class="stat-value">0</p>
+
+        <p class="stat-label" style="font-size: 0.6rem;">
+            Removed Expired Entries
+        </p>
+    </div>
+
+    <!-- Cached Records Table -->
+    <div class="stat-card full-width">
+        <p class="stat-label">Current Cached DNS Records</p>
+
+        <div class="log-table">
+
+            <div class="log-row log-header">
+                <span>Domain</span>
+                <span>Record Type</span>
+                <span>Cached IP</span>
+                <span>TTL</span>
+                <span>Status</span>
+            </div>
+
+            <div class="log-row">
+                <span>google.com</span>
+                <span>A</span>
+                <span>142.250.190.14</span>
+                <span>300s</span>
+                <span>CACHED</span>
+            </div>
+
+            <div class="log-row">
+                <span>cloudflare.com</span>
+                <span>A</span>
+                <span>104.16.132.229</span>
+                <span>145s</span>
+                <span>CACHED</span>
+            </div>
+
+            <div class="log-row flagged">
+                <span>expired-entry.test</span>
+                <span>A</span>
+                <span>0.0.0.0</span>
+                <span>0s</span>
+                <span>EXPIRED</span>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Cache Activity -->
+    <div class="stat-card full-width">
+        <p class="stat-label">Recent Cache Activity</p>
+
+        <div class="log-table">
+
+            <div class="log-row log-header">
+                <span>Timestamp</span>
+                <span>Domain</span>
+                <span>Operation</span>
+                <span>Latency</span>
+                <span>Source</span>
+            </div>
+
+            <div class="log-row">
+                <span>12:40:01</span>
+                <span>google.com</span>
+                <span>Cache Hit</span>
+                <span>2ms</span>
+                <span>Memory</span>
+            </div>
+
+            <div class="log-row">
+                <span>12:40:07</span>
+                <span>youtube.com</span>
+                <span>Cache Miss</span>
+                <span>42ms</span>
+                <span>8.8.8.8</span>
+            </div>
+
+            <div class="log-row flagged">
+                <span>12:40:15</span>
+                <span>expired-entry.test</span>
+                <span>TTL Expired</span>
+                <span>--</span>
+                <span>Evicted</span>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<div class="status">
+    <span class="dot"></span>
+    Resolver Cache Online
+</div>
+
+</body>
+</html>

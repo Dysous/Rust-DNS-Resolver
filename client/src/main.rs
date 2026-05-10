@@ -62,7 +62,7 @@ async fn handle_input (input: &str) -> Result <(), Box<dyn Error>> {
         correct_args = false;
     }
 
-    if(correct_args) {
+    if correct_args {
         let hostname = args[1];
         println!("Querying hostname: \"{}\"...", args[1]);
 
