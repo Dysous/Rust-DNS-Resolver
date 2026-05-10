@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNS Logs</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="navbar">
+    <a class="nav-link" href="index.html">Dashboard</a>
+    <a class="nav-link active" href="logs.html">Logs</a>
+    <a class="nav-link" href="cache.html">Cache</a>
+    <a class="nav-link" href="threats.html">Threats</a>
+</div>
+
+<h1>DNS Query Logs</h1>
+
+<div class="dashboard">
+
+    <!-- Log Statistics -->
+    <div class="stat-card">
+        <p class="stat-label">Total Logged Queries</p>
+        <p class="stat-value">0</p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">Flagged Requests</p>
+        <p class="stat-value">0</p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">Blocked Requests</p>
+        <p class="stat-value">0</p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">DNSSEC Signed</p>
+        <p class="stat-value">0</p>
+    </div>
+
+    <!-- Search / Filter -->
+    <div class="stat-card full-width">
+
+        <p class="stat-label">Search & Filters</p>
+
+        <div class="filter-bar">
+
+            <label for="search-query" class="sr-only">
+                Search logs
+            </label>
+
+            <input
+                    id="search-query"
+                    type="text"
+                    class="filter-input"
+                    placeholder="Search domain or IP..."
+            >
+
+            <label for="status-filter" class="sr-only">
+                Filter by status
+            </label>
+
+            <select id="status-filter" class="filter-select">
+                <option>All Statuses</option>
+                <option>SAFE</option>
+                <option>FLAGGED</option>
+                <option>BLOCKED</option>
+            </select>
+
+            <label for="protocol-filter" class="sr-only">
+                Filter by protocol
+            </label>
+
+            <select id="protocol-filter" class="filter-select">
+                <option>All Protocols</option>
+                <option>UDP</option>
+                <option>DoH</option>
+            </select>
+
+        </div>
+    </div>
+
+    <!-- Full DNS Query Log -->
+    <div class="stat-card full-width">
+
+        <p class="stat-label">Live DNS Request Stream</p>
+
+        <div class="log-table">
+
+            <!-- Header -->
+            <div class="log-row log-header logs-grid">
+
+                <span>Timestamp</span>
+                <span>Source IP</span>
+                <span>Domain</span>
+                <span>Protocol</span>
+                <span>Latency</span>
+                <span>DNSSEC</span>
+                <span>Status</span>
+
+            </div>
+
+            <!-- Normal Entry -->
+            <div class="log-row logs-grid">
+
+                <span>--:--:--</span>
+                <span>0.0.0.0</span>
+                <span>example.com</span>
+                <span>UDP</span>
+                <span>0 ms</span>
+                <span>Signed</span>
+                <span>SAFE</span>
+
+            </div>
+
+            <!-- Flagged Entry -->
+            <div class="log-row logs-grid flagged">
+
+                <span>--:--:--</span>
+                <span>0.0.0.0</span>
+                <span>suspicious.domain</span>
+                <span>DoH</span>
+                <span>0 ms</span>
+                <span>Unsigned</span>
+                <span>FLAGGED</span>
+
+            </div>
+
+            <!-- Blocked Entry -->
+            <div class="log-row logs-grid blocked">
+
+                <span>--:--:--</span>
+                <span>0.0.0.0</span>
+                <span>ads.tracker.net</span>
+                <span>UDP</span>
+                <span>0 ms</span>
+                <span>Unsigned</span>
+                <span>NXDOMAIN</span>
+
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<div class="status">
+    <span class="dot"></span>
+    Live Query Logging Active
+</div>
+
+</body>
+</html>

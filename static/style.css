@@ -1,0 +1,243 @@
+/* style.css: sets the visual format style so each webpage is cohesive */
+
+/* COLORS global variables: hex code -> color name*/
+:root {
+    --bg: #0f172a;              /* background */
+    --card: #1e293b;            /* cards/boxes */
+    --text: #f8fafc;            /* text color for readability */
+    --accent: #38bdf8;          /* buttons, links, key data */
+    --secondary: #94a3b8;       /* labels, less important info */
+}
+
+body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;         /* stacks the navbar, header, & content vertically */
+    align-items: center;            /* centers everything horizontally */
+    padding: 0 20px 40px 20px;
+    margin: 0;
+    min-height: 100vh;
+}
+
+/* headings */
+h1 {
+    margin-bottom: 2rem;
+    font-weight: 300;
+    letter-spacing: -0.025em;
+}
+
+.dashboard {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    width: 100%;
+    max-width: 800px;
+}
+
+.stat-card {
+    background: var(--card);
+    padding: 1.5rem;
+    border-radius: 12px;
+    text-align: center;
+    border: 1px solid #334155;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.full-width {
+    grid-column: span 2;
+    text-align: left;
+}
+
+.stat-value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--accent);
+    margin: 0.5rem 0;
+}
+
+.stat-label {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.75rem;
+    color: var(--secondary);
+    margin: 0;
+}
+
+.domain-list {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0 0 0;
+}
+
+.domain-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #334155;
+    font-size: 0.9rem;
+}
+
+.domain-item:last-child {
+    border-bottom: none;
+}
+
+.domain-name {
+    color: var(--accent);
+    font-family: 'Fira Code', monospace;
+}
+
+.domain-count {
+    color: var(--secondary);
+}
+
+/* green system live status footer */
+.status {
+    margin-top: 3rem;
+    font-size: 0.75rem;
+    color: #4ade80;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dot {
+    height: 8px;
+    width: 8px;
+    background-color: #4ade80;
+    border-radius: 50%;
+    display: inline-block;
+    box-shadow: 0 0 8px #4ade80;
+}
+
+/* header navigation bar */
+.navbar {
+    width: 100%;
+    background: rgba(17, 24, 39, 0.92);
+    border-bottom: 1px solid #334155;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 18px;
+    padding: 10px 0;
+    position: sticky;
+    top: 0;
+    backdrop-filter: blur(10px);
+    z-index: 1000;
+}
+
+.nav-link {
+    color: var(--secondary);
+    text-decoration: none;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.nav-link:hover {
+    background: var(--card);
+    color: var(--accent);
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+}
+
+.nav-link.active {
+    background: var(--accent);
+    color: #0f172a;
+}
+
+/* threat tables for security & threats page */
+.log-table {
+    margin-top: 1rem;
+    width: 100%;
+}
+
+.log-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    padding: 12px;
+    border-bottom: 1px solid #334155;
+    font-size: 0.9rem;
+    align-items: center;
+}
+
+.log-header {
+    color: var(--secondary);
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+}
+
+.flagged {
+    background: rgba(239, 68, 68, 0.12);
+    border-left: 4px solid #ef4444;
+    border-radius: 8px;
+}
+
+.timeline-placeholder {
+    margin-top: 1rem;
+    height: 180px;
+    border: 2px dashed #334155;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--secondary);
+    font-size: 0.95rem;
+}
+
+/* logs page */
+.logs-grid {
+    grid-template-columns:
+        1fr
+        1.2fr
+        2fr
+        0.8fr
+        0.8fr
+        1fr
+        1fr;
+}
+
+.filter-bar {
+    display: flex;
+    gap: 12px;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.filter-input,
+.filter-select {
+    background: #0f172a;
+    border: 1px solid #334155;
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+}
+
+.filter-input {
+    flex: 1;
+    min-width: 240px;
+}
+
+.blocked {
+    background: rgba(245, 158, 11, 0.12);
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+}
+
+/* accessibility labels (hidden visually but readable by screen readers) */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}

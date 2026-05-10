@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Threat Detection</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="navbar">
+    <a class="nav-link" href="index.html">Dashboard</a>
+    <a class="nav-link" href="logs.html">Logs</a>
+    <a class="nav-link" href="cache.html">Cache</a>
+    <a class="nav-link active" href="threats.html">Threats</a>
+</div>
+
+<h1>Security & Threat Modeling</h1>
+
+<div class="dashboard">
+
+    <!-- Threat Stats -->
+    <div class="stat-card">
+        <p class="stat-label">Blocked (NXDOMAIN)</p>
+        <p class="stat-value">0</p>
+
+        <p class="stat-label" style="font-size: 0.6rem;">
+            Blocklist Matches
+        </p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">Flagged Queries</p>
+        <p class="stat-value">0</p>
+
+        <p class="stat-label" style="font-size: 0.6rem;">
+            Suspicion Score > 70
+        </p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">Threat Score Average</p>
+        <p class="stat-value">0</p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">Tunneling & Entropy Alerts</p>
+        <p class="stat-value">0</p>
+    </div>
+
+    <!-- DNSSEC -->
+    <div class="stat-card">
+        <p class="stat-label">DNSSEC Validations</p>
+        <p class="stat-value">0</p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">DNSSEC Failures</p>
+        <p class="stat-value">0</p>
+    </div>
+
+    <!-- Threat Feed -->
+    <div class="stat-card full-width">
+        <p class="stat-label">Recent Flagged Queries</p>
+
+        <div class="log-table">
+
+            <div class="log-row log-header">
+                <span>Timestamp</span>
+                <span>Source IP</span>
+                <span>Domain</span>
+                <span>Threat Score</span>
+                <span>Status</span>
+            </div>
+
+            <div class="log-row flagged">
+                <span>--:--:--</span>
+                <span>0.0.0.0</span>
+                <span>none</span>
+                <span>0</span>
+                <span>SAFE</span>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Tunneling Watchlist -->
+    <div class="stat-card full-width">
+        <p class="stat-label">Tunneling Watchlist</p>
+
+        <div class="log-table">
+
+            <div class="log-row log-header">
+                <span>Domain</span>
+                <span>Unique Subdomains</span>
+                <span>Entropy Score</span>
+                <span>Detection Count</span>
+            </div>
+
+            <div class="log-row flagged">
+                <span>none</span>
+                <span>0</span>
+                <span>0</span>
+                <span>0</span>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="stat-card full-width">
+        <p class="stat-label">Suspicious Activity Timeline</p>
+
+        <div class="timeline-placeholder">
+            No suspicious activity detected.
+        </div>
+    </div>
+
+</div>
+
+<div class="status">
+    <span class="dot"></span>
+    Threat Engine Online
+</div>
+
+</body>
+</html>
