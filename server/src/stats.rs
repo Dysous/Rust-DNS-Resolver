@@ -97,7 +97,9 @@ impl DnsStats {
     }
 
     pub fn get_logs(&self) -> Vec<LogEntry> {
-        self.logs.lock().unwrap().clone()
+        //self.logs.lock().unwrap().clone()
+        self.logs.lock().unwrap().clone().into()
+        //self.logs.lock().unwrap().iter().cloned().collect()
     }
 
     //helper functions
