@@ -48,30 +48,33 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let domain = "group8-monitor";
     let token = "960d0d55-e9ce-4846-83c9-188350fde697";
-    tokio::spawn(async move {
-        let client = reqwest::Client::new();
-        let url = format!("http://www.duckdns.org/update?domains={}&token={}", domain, token);
 
-        let mut interval = tokio::time::interval(Duration::from_secs(60));
+    if std::env::var("ENABLE_DUCKDNS").is_ok() {
+        tokio::spawn(async move {
+            let client = reqwest::Client::new();
+            let url = format!("http://www.duckdns.org/update?domains={}&token={}", domain, token);
 
-        loop {//update duck dns binding loop
-            //TODO pfsense creates an warning that takes down the actual server website
-            interval.tick().await;
-            match client.get(&url).send().await {
-                Ok(resp) => {
-                    if resp.status().is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        if body.contains("OK") {
-                            println!("DuckDNS: Update successful." );
-                        } else {
-                            println!("DuckDNS: Update failed." );
+            let mut interval = tokio::time::interval(Duration::from_secs(60));
+
+            loop { //update duck dns binding loop
+                //TODO pfsense creates an warning that takes down the actual server website
+                interval.tick().await;
+                match client.get(&url).send().await {
+                    Ok(resp) => {
+                        if resp.status().is_success() {
+                            let body = resp.text().await.unwrap_or_default();
+                            if body.contains("OK") {
+                                println!("DuckDNS: Update successful.");
+                            } else {
+                                println!("DuckDNS: Update failed.");
+                            }
                         }
                     }
+                    Err(e) => eprintln!("DuckDNS: Error while sending request to DuckDNS: {}", e),
                 }
-                Err(e) => eprintln!("DuckDNS: Error while sending request to DuckDNS: {}", e),
             }
-        }
-    });
+        });
+    }
 
     let shared_blocklist = Arc::new(Blocklist::load("hosts.txt"));
     let dns_stats = Arc::clone(&shared_stats);
