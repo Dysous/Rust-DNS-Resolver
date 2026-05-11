@@ -3,6 +3,8 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH, Instant};
 use serde::Serialize;
+//use crate::threat::{ThreatResult, TunnelEvidence};
+use crate::threat::ThreatResult;
 
 const LOG_BUFFER_SIZE: usize = 1000;    //ring buffer for logs
 
@@ -49,6 +51,16 @@ pub struct CacheEntryView {
     pub expires_in_secs: u64,
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub struct ThreatEvent {
+    pub timestamp: u64,
+    pub source_ip: String,
+    pub domain: String,
+    pub score: u32,
+    pub reasons: Vec<String>,
+    pub likely_tunneling: bool,
+}
+
 //stats engine struct
 pub struct DnsStats {
     //counters (atomic, no locking needed)
@@ -68,6 +80,13 @@ pub struct DnsStats {
     pub domain_counts: Mutex<HashMap<String, u64>>,     //total domain count
     pub blocked_domains: Mutex<HashMap<String, u64>>,   //total blocked domain count
     pub logs: Mutex<VecDeque<LogEntry>>, //ring buffer for logs
+
+
+    // Week 4: Metrics for the Dashboard Gauges
+    pub threat_score_total: AtomicU64,
+    pub threat_samples: AtomicU64,
+    // Week 4: The "Security Feed" for the UI Table
+    pub threat_events: Mutex<VecDeque<ThreatEvent>>,
 }
 
 impl DnsStats {
@@ -85,6 +104,12 @@ impl DnsStats {
             domain_counts: Mutex::new(HashMap::new()),
             blocked_domains: Mutex::new(HashMap::new()),
             logs: Mutex::new(VecDeque::with_capacity(LOG_BUFFER_SIZE)),    //ring buffer capacity can change if needed
+
+            threat_score_total: AtomicU64::new(0),
+            threat_samples: AtomicU64::new(0),
+            threat_events: Mutex::new(VecDeque::with_capacity(1000)),
+
+
         }
     }
 
@@ -152,6 +177,47 @@ impl DnsStats {
             })
             .collect()
     }
+
+    // --- ADD THE NEW WEEK 4 METHODS HERE ---
+
+    /// Ingests a threat result from the detector and stores it for the UI.
+    pub fn record_threat_result(&self, source_ip: String, domain: String, result: &ThreatResult) {
+        // Update Averages (for the dashboard gauges)
+        self.threat_score_total.fetch_add(result.score as u64, Ordering::Relaxed);
+        self.threat_samples.fetch_add(1, Ordering::Relaxed);
+
+        // Filter: Only store in the "Security Feed" if it's actually suspicious
+        if result.score > 10 || result.likely_tunneling {
+            let mut events = self.threat_events.lock().unwrap();
+            if events.len() >= 1000 {
+                events.pop_front();
+            }
+
+            events.push_back(ThreatEvent {
+                timestamp: Self::now(),
+                source_ip,
+                domain,
+                score: result.score,
+                reasons: result.reasons.clone(),
+                likely_tunneling: result.likely_tunneling,
+            });
+        }
+    }
+
+    /// Returns the average threat score across all queries
+    pub fn get_avg_threat_score(&self) -> f64 {
+        let samples = self.threat_samples.load(Ordering::Relaxed);
+        if samples == 0 { return 0.0; }
+        self.threat_score_total.load(Ordering::Relaxed) as f64 / samples as f64
+    }
+
+    /// Helper to get all threat events for the frontend table
+    pub fn get_threat_events(&self) -> Vec<ThreatEvent> {
+        let events = self.threat_events.lock().unwrap();
+        events.iter().cloned().collect()
+    }
+
+    // --- END NEW METHODS ---
 
     //helper functions
     pub fn now() -> u64 {

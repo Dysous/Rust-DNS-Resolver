@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
+use serde_json;
 
 #[derive(Debug)]
 pub struct ThreatResult {
@@ -16,7 +17,7 @@ pub struct TunnelEvidence {
     pub sample_queries: Vec<String>,
     pub entropy_scores: Vec<f64>,
     pub unique_subdomain_count: usize,
-    pub last_seen_secs_ago: u64,
+    pub last_seen: Instant,
 }
 
 #[derive(Debug)]
@@ -87,8 +88,19 @@ impl ThreatDetector {
         }
     }
 
-    pub fn watchlist(&self) -> Vec<TunnelEvidence> {
-        self.tunneling_watchlist.values().cloned().collect()
+    pub fn watchlist(&self) -> Vec<serde_json::Value> {
+        self.tunneling_watchlist
+            .values()
+            .map(|ev| {
+                serde_json::json!({
+                "domain": ev.domain,
+                "sample_queries": ev.sample_queries,
+                "entropy_scores": ev.entropy_scores,
+                "unique_subdomain_count": ev.unique_subdomain_count,
+                "last_seen_secs_ago": ev.last_seen.elapsed().as_secs(),
+            })
+            })
+            .collect()
     }
 
     fn track_frequency(&mut self, src_ip: IpAddr) -> usize {
@@ -173,7 +185,7 @@ impl ThreatDetector {
                     sample_queries,
                     entropy_scores,
                     unique_subdomain_count: unique_subdomains.len(),
-                    last_seen_secs_ago: 0,
+                    last_seen: now,
                 },
             );
         }
