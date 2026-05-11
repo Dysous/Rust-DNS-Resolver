@@ -28,6 +28,7 @@ impl DnssecSigner {
     }
 
     pub fn sign_response(&self, mut packet_bytes: Vec<u8>, domain_wire: &[u8]) -> Vec<u8> {
+    //pub fn sign_response(&self, packet_bytes: &[u8], domain_wire: &[u8]) -> Vec<u8> {
         let rng = ring::rand::SystemRandom::new();
 
         // In a strict implementation, we'd sign the canonical RRSet,

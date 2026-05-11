@@ -106,14 +106,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let app = Router::new()
         .route_service("/", ServeFile::new(index_file))
         .route("/api/stats", get(move | State(s): State<Arc<stats::DnsStats>> | async move {
-            let domain_map = s.domain_counts.lock().unwrap();
+            let domain_map = {
+                let guard = s.domain_counts.lock().unwrap();
+                guard.clone()
+            };
             Json(serde_json::json!({
                 "queries": s.total_queries.load(Ordering::Relaxed),
                 "cache_hits": s.cache_hits.load(Ordering::Relaxed),
                 "upstream_forwards": s.upstream_forwards.load(Ordering::Relaxed),
                 "queries_per_sec": s.queries_per_second(),
                 "avg_latency_ms": s.avg_latency(),
-                "top_domains": *domain_map,
+                "top_domains": domain_map,
             }))
         }))
         .route("/api/logs", get({
@@ -157,7 +160,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 async fn run_udp_listener(
     bind_addr: &str,
-    log: &str,
+    _log: &str,
     stats: Arc<stats::DnsStats>,
     blocklist: Arc<Blocklist>,
     cache: Arc<Mutex<HashMap<String, CacheEntry>>>,
@@ -261,9 +264,10 @@ pub async fn handle_request(
         if Instant::now() < entry.expires_at {
             println!("cache hit: {}", cache_key);
             stats.cache_hits.fetch_add(1, Ordering::Relaxed);
-            let cached_response = entry.response.clone();
-            let mut signed = signer.sign_response(cached_response, &domain_wire);
-            if request.len() >= 2 && cached_response.len() >= 2 {
+            let cached_len_ok = entry.response.len() >= 2;
+            let mut signed = signer.sign_response(entry.response.clone(), &domain_wire);
+
+            if request.len() >= 2 && cached_len_ok && signed.len() >= 2 {
                 signed[0] = request[0];
                 signed[1] = request[1];
             }
@@ -276,6 +280,7 @@ pub async fn handle_request(
 
     let start = Instant::now();
     let response = forward_to_upstream(request, "8.8.8.8:53").await?;
+    stats.upstream_forwards.fetch_add(1, Ordering::Relaxed);
     let duration = start.elapsed().as_millis() as u64;
 
     //stats.total_latency_ms.fetch_add(duration, Ordering::Relaxed);
