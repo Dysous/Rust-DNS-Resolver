@@ -16,10 +16,10 @@
 </div>
 
 <h1>DNS Network Monitor</h1>
-<!-- TO DO REMOVE THIS TEMP COMMENT -->
+<!-- TO DO REMOVE THIS TEMP COMMENT below-->
 <p class="dashboard-note">
     Dashboard data is fully connected to the live EC2 resolver.
-    Logs, Cache, and Threats pages currently display placeholder/demo data
+    api/ Logs, Cache, now populated. Threats pages currently display placeholder/demo data
     for UI and feature visualization.
 </p>
 
@@ -44,8 +44,25 @@
         <p class="stat-label">%</p>
     </div>
 
+    <div class="stat-card">
+        <p class="stat-label">Upstream Forwards</p>
+        <p id="upstream-forwards" class="stat-value">0</p>
 
+        <p class="stat-label" style="font-size: 0.6rem;">
+            Cache Miss Forwarding
+        </p>
+    </div>
 
+    <div class="stat-card">
+        <p class="stat-label">Queries / Sec</p>
+        <p id="queries-per-sec" class="stat-value">0</p>
+
+        <p class="stat-label" style="font-size: 0.6rem;">
+            Live Resolver Throughput
+        </p>
+    </div>
+
+    <!--
     <div class="stat-card">
         <p class="stat-label">Blocked Domains</p>
         <p id="blocked-domains" class="stat-value">0</p>
@@ -63,7 +80,7 @@
             Signed Response Checks
         </p>
     </div>
-
+    -->
 
 
 
@@ -90,19 +107,25 @@
             // 2. Latency
             document.getElementById('avg-latency').innerText = data.avg_latency_ms || 0;
 
+            // DNSSEC + Blocking Stats (TODO)
+            // document.getElementById('blocked-domains').innerText = data.blocked_domains || 0;
+            // document.getElementById('dnssec-validations').innerText = data.dnssec_validations || 0;
 
-            // DNSSEC + Blocking Stats
-            document.getElementById('blocked-domains').innerText =
-                data.blocked_domains || 0;
+            // 3. Upstream + Throughput
+            document.getElementById('upstream-forwards').innerText = data.upstream_forwards || 0;
 
-            document.getElementById('dnssec-validations').innerText =
-                data.dnssec_validations || 0;
+            document.getElementById('queries-per-sec').innerText = (data.queries_per_sec || 0).toFixed(2);
+
 
             // 3. Efficiency Calculation
+            let efficiency = "0.0";
             if (data.queries > 0) {
-                const efficiency = ((data.cache_hits / data.queries) * 100).toFixed(1);
-                document.getElementById('cache-percent').innerText = efficiency;
+                const ratio = data.cache_hits / data.queries;
+                const percent = ratio * 100;
+                efficiency = percent.toFixed(1);
             }
+
+            document.getElementById('cache-percent').innerText = efficiency;
 
             // 4. Top Domains Logic
             const domainContainer = document.getElementById('top-domains');
@@ -119,6 +142,8 @@
                         <span class="domain-count">${count} hits</span>
                     </div>
                 `).join('');
+            } else {
+                domainContainer.innerHTML = '<div class="domain-item"><span class="domain-name">Waiting for traffic...</span></div>';
             }
         } catch (err) {
             console.error("Dashboard sync error:", err);

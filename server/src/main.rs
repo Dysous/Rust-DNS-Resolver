@@ -45,6 +45,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let shared_stats = Arc::new(stats::DnsStats::new());
     let shared_cache = Arc::new(Mutex::new(HashMap::new()));
 
+    let web_cache = Arc::clone(&shared_cache);
 
     let domain = "group8-monitor";
     let token = "960d0d55-e9ce-4846-83c9-188350fde697";
@@ -105,15 +106,39 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let app = Router::new()
         .route_service("/", ServeFile::new(index_file))
         .route("/api/stats", get(move | State(s): State<Arc<stats::DnsStats>> | async move {
-            let domain_map = s.domain_counts.lock().unwrap();
+            let domain_map = {
+                let guard = s.domain_counts.lock().unwrap();
+                guard.clone()
+            };
             Json(serde_json::json!({
                 "queries": s.total_queries.load(Ordering::Relaxed),
                 "cache_hits": s.cache_hits.load(Ordering::Relaxed),
-                "avg_latency_ms": if s.total_queries.load(Ordering::Relaxed) > 0 {
-                    s.total_latency_ms.load(Ordering::Relaxed) / s.total_queries.load(Ordering::Relaxed)
-                } else { 0 },
-                "top_domains": *domain_map,
+                "upstream_forwards": s.upstream_forwards.load(Ordering::Relaxed),
+                "queries_per_sec": s.queries_per_second(),
+                "avg_latency_ms": s.avg_latency(),
+                "top_domains": domain_map,
             }))
+        }))
+        .route("/api/logs", get({
+            let stats = Arc::clone(&shared_stats);
+            move || async move {
+                Json(stats.get_logs())
+            }
+        }))
+        .route("/api/cache", get(move || {
+            let cache = Arc::clone(&web_cache);
+            async move {
+                let guard = cache.lock().await;
+
+                let entries: Vec<_> = guard.iter().map(|(k, v)| {
+                    serde_json::json!({
+                "key": k,
+                "expires_at": v.expires_at.elapsed().as_secs()
+            })
+                }).collect();
+
+                Json(entries)
+            }
         }))
         .with_state(web_stats)
         .nest(//dns-query endpoint handles DNS over HTTPS requests (encrypted DNS)
@@ -133,13 +158,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 }
 
-async fn run_udp_listener(bind_addr: &str,
-                          log: &str,
-                          stats: Arc<stats::DnsStats>,
-                          blocklist: Arc<Blocklist>,
-                          cache: Arc<Mutex<HashMap<String, CacheEntry>>>,
-                          signer: Arc<DnssecSigner>,
-
+async fn run_udp_listener(
+    bind_addr: &str,
+    _log: &str,
+    stats: Arc<stats::DnsStats>,
+    blocklist: Arc<Blocklist>,
+    cache: Arc<Mutex<HashMap<String, CacheEntry>>>,
+    signer: Arc<DnssecSigner>,
 ) -> Result<(), Box<dyn Error>> {
     let socket = UdpSocket::bind(bind_addr).await?;
     println!("UDP listener running on {}", bind_addr);
@@ -151,44 +176,62 @@ async fn run_udp_listener(bind_addr: &str,
         let (size, src) = socket.recv_from(&mut buf).await?;
         let request = &buf[..size];
 
-        log_request(log,src, request)?;
         println!("\nreceived {} bytes from {}", size, src);
         print_hex(request);
 
         stats.total_queries.fetch_add(1, Ordering::Relaxed);
-        let response = {//quickly lock shared resource
+        let start = Instant::now();
+        let (response, domain, rcode) = {//quickly lock shared resource
             let mut guard = cache.lock().await;
             handle_request(request, src, &mut guard, &stats, &blocklist,&mut threat_detector, &signer).await?
         };
         // print_hex(&response);
         socket.send_to(&response, src).await?;
+        let latency = start.elapsed().as_millis() as u64;
+        stats.log_request(
+            src.ip().to_string(),
+            domain.to_string(),
+            rcode,
+            latency,
+            "UDP".to_string(),
+        );
     }
 }
 
 pub async fn handle_request(
-    request: &[u8], src: SocketAddr,
+    request: &[u8],
+    src: SocketAddr,
     cache: &mut HashMap<String, CacheEntry>,
     stats: &stats::DnsStats,
     blocklist: &Blocklist,
     threat_detector: &mut ThreatDetector,
     signer: &DnssecSigner,
-)-> Result<Vec<u8>, Box<dyn Error>> {
+)-> Result<(Vec<u8>, String, u8), Box<dyn Error>> { // NEW CODE
+        /* for the above line of code^^
+        Vec<u8> = DNS response
+        String = domain
+        u8 = DNS RCODE
+        */
     evict_expired(cache);
 
     let packet = packet::DnsPacket::from_bytes(request);
-    if packet.questions.is_empty() {
-        return forward_to_upstream(request, "8.8.8.8:53").await;
-    }
 
-    let question = &packet.questions[0];
+    let question = match packet.questions.first() {
+        Some(q) => q,
+        None => {
+            let resp = forward_to_upstream(request, "8.8.8.8:53").await?;
+            return Ok((resp, "unknown".to_string(), 0));
+        }
+    };
+
     let domain_name = question.name.clone();
     let domain_wire = dnssec::name_to_wire(&domain_name);
 
-    if question.qtype == 48 {
-        return Ok(signer.build_dnskey_answer(request, &domain_wire));
+    if question.qtype == 48 {       // DNSSEC DNSKEY request check
+        return Ok((signer.build_dnskey_answer(request, &domain_wire), domain_name, 0));
     }
 
-    stats.record_domain(domain_name.clone());
+    stats.record_domain(domain_name.clone());   // record domain in stats
 
     let threat_result = threat_detector.analyze(src.ip(), &domain_name);
     if threat_result.flagged {
@@ -212,7 +255,7 @@ pub async fn handle_request(
     if blocklist.is_blocked(&domain_name) {
         println!("Blocked domain: {}", domain_name);
         //send NXDOMAIN to claim it doesn't exist instead of not returning
-        return Ok (build_nxdomain_response(request));
+        return Ok((build_nxdomain_response(request), domain_name, 3));
     }
 
     let cache_key = format!("{}|{}|{}", question.name, question.qtype, question.qclass);
@@ -221,22 +264,27 @@ pub async fn handle_request(
         if Instant::now() < entry.expires_at {
             println!("cache hit: {}", cache_key);
             stats.cache_hits.fetch_add(1, Ordering::Relaxed);
+            let cached_len_ok = entry.response.len() >= 2;
+            let mut signed = signer.sign_response(entry.response.clone(), &domain_wire);
 
-            let mut cached_response = entry.response.clone();
-            if request.len() >= 2 && cached_response.len() >= 2 {
-                cached_response[0] = request[0];
-                cached_response[1] = request[1];
+            if request.len() >= 2 && cached_len_ok && signed.len() >= 2 {
+                signed[0] = request[0];
+                signed[1] = request[1];
             }
-            return Ok(signer.sign_response(cached_response, &domain_wire));
+
+            return Ok((signed, domain_name, 0));   //2 NEW CODE
+            //return Ok(signer.sign_response(cached_response, &domain_wire));
         }
     }
     println!("cache miss: {}", cache_key);
 
     let start = Instant::now();
     let response = forward_to_upstream(request, "8.8.8.8:53").await?;
+    stats.upstream_forwards.fetch_add(1, Ordering::Relaxed);
     let duration = start.elapsed().as_millis() as u64;
 
-    stats.total_latency_ms.fetch_add(duration, Ordering::Relaxed);
+    //stats.total_latency_ms.fetch_add(duration, Ordering::Relaxed);
+    stats.add_latency(duration);
 
     if let Some(ttl) = extract_min_ttl(&response) {
         if ttl > 0 {
@@ -250,7 +298,14 @@ pub async fn handle_request(
             println!("cached response for {} seconds", ttl);
         }
     }
-    Ok(response)
+
+    let mut final_resp = response;
+    if request.len() >= 2 && final_resp.len() >= 2 {
+        final_resp[0] = request[0];
+        final_resp[1] = request[1];
+    }
+
+    Ok((final_resp, domain_name, 0))
 }
 
 fn evict_expired(cache: &mut HashMap<String, CacheEntry>) {

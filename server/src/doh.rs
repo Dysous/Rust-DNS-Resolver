@@ -60,10 +60,19 @@ pub async fn doh_query_handler(
 
     let mut cache = state.cache.lock().await;
     let mut threat_detector = ThreatDetector::new();
-
+    let start = std::time::Instant::now();  // Start timer for latency tracking
 
     match handle_request(&body, src, &mut cache, &state.stats, &state.blocklist,&mut threat_detector, &state.signer).await {
-        Ok(response_bytes) => {
+        Ok((response_bytes, domain, rcode)) => {
+            let latency = start.elapsed().as_millis() as u64;
+            state.stats.log_request(
+                src.ip().to_string(),
+                domain,
+                rcode,
+                latency,      // DoH latency
+                "DoH".to_string(),
+            );
+
             (
                 StatusCode::OK,
                 [
