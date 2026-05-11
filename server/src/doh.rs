@@ -59,15 +59,25 @@ pub async fn doh_query_handler(
         return (StatusCode::BAD_REQUEST, "Empty DNS query").into_response();
     }
 
+    //grab actual source ip not localhost
+    let header_ip: SocketAddr = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim())
+        .and_then(|s| s.parse::<std::net::IpAddr>().ok())
+        .map(|ip| SocketAddr::new(ip, 0))
+        .unwrap_or(src);
+
     let mut cache = state.cache.lock().await;
     let mut threat_detector = state.threat_detector.lock().await;
     let start = std::time::Instant::now();  // Start timer for latency tracking
 
-    match handle_request(&body, src, &mut cache, &state.stats, &state.blocklist,&mut *threat_detector, &state.signer).await {
+    match handle_request(&body, header_ip, &mut cache, &state.stats, &state.blocklist,&mut *threat_detector, &state.signer).await {
         Ok((response_bytes, domain, rcode)) => {
             let latency = start.elapsed().as_millis() as u64;
             state.stats.log_request(
-                src.ip().to_string(),
+                header_ip.ip().to_string(),
                 domain,
                 rcode,
                 latency,      // DoH latency

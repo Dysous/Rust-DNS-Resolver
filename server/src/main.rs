@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .expect("Failed to generate PKCS8 BYTES");
     let key_pair = ring::signature::EcdsaKeyPair::from_pkcs8(&ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING, pk8_bytes.as_ref(), &rng)
         .expect("Failed to create key pair from PKCS8");
-    let signer = Arc::new(dnssec::DnssecSigner::new(key_pair));
+    let signer = Arc::new(DnssecSigner::new(key_pair));
 
     //website stats/domain
     let shared_stats = Arc::new(stats::DnsStats::new());
@@ -57,7 +57,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let mut interval = tokio::time::interval(Duration::from_secs(60));
 
             loop { //update duck dns binding loop
-                //TODO pfsense creates an warning that takes down the actual server website
                 interval.tick().await;
                 match client.get(&url).send().await {
                     Ok(resp) => {
@@ -182,7 +181,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .fallback_service(ServeDir::new(static_dir));
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
     println!("Web Monitor Live At http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     //getting http connection info now for /dns-query integration with stats later
@@ -371,39 +370,6 @@ fn extract_min_ttl(response: &[u8]) -> Option<u32> {
     packet.answers.iter().map(|r| r.ttl).min()
 }
 
-fn build_notimpl_response(request: &[u8]) -> Vec<u8> {
-    if request.len() < 12 {
-        return Vec::new();
-    }
-
-    let mut response = Vec::with_capacity(request.len());
-
-    // transaction ID
-    response.extend_from_slice(&request[0..2]);
-    response.push(0x81);
-    response.push(0x84);
-    response.extend_from_slice(&request[4..6]);
-    response.extend_from_slice(&[0x00, 0x00]);
-    response.extend_from_slice(&[0x00, 0x00]);
-    response.extend_from_slice(&[0x00, 0x00]);
-    response.extend_from_slice(&request[12..]);
-    response
-}
-
-//log helper to debug received requests
-fn log_request(log_path: &str, src: SocketAddr, request: &[u8]) -> Result<(), Box<dyn Error>> {
-    let mut file = OpenOptions::new().create(true).append(true).open(log_path)?;
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-
-    writeln!(file, "timestamp: {}", ts)?;
-    writeln!(file, "source: {}", src)?;
-    writeln!(file, "size: {}", request.len())?;
-    writeln!(file, "hex: {}", to_hex(request))?;
-    writeln!(file, "----")?;
-
-    Ok(())
-}
-
 fn log_threat(
     log_path: &str,
     src: SocketAddr,
@@ -454,12 +420,6 @@ fn build_nxdomain_response(request: &[u8]) -> Vec<u8> {
 }
 
 //helpers
-fn to_hex(bytes: &[u8]) -> String {
-    bytes.iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
 
 fn print_hex(bytes: &[u8]) {
     for (i, b) in bytes.iter().enumerate() {
