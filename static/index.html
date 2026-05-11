@@ -16,14 +16,14 @@
 </div>
 
 <h1>DNS Network Monitor</h1>
-<!-- TO DO REMOVE THIS TEMP COMMENT below-->
+<!-- TODO REMOVE THIS TEMP COMMENT below-->
 <p class="dashboard-note">
-    Dashboard data is fully connected to the live EC2 resolver.
-    api/ Logs, Cache, now populated. Threats pages currently display placeholder/demo data
-    for UI and feature visualization.
+    Current update: Dashboard/logs page data should be fully functional.
+    todo: cache/threats pages currently display placeholder/demo data for UI and feature visualization.
 </p>
 
 <div class="dashboard">
+    <!-- Row 1: Basic Traffic -->
     <div class="stat-card">
         <p class="stat-label">Total Queries</p>
         <p id="total-queries" class="stat-value">0</p>
@@ -34,7 +34,7 @@
     </div>
 
     <div class="stat-card">
-        <p class="stat-label">Avg Latency</p>
+        <p class="stat-label">Average Latency</p>
         <p id="avg-latency" class="stat-value">0</p>
         <p class="stat-label" style="text-transform: lowercase;">ms</p>
     </div>
@@ -43,51 +43,50 @@
         <p id="cache-percent" class="stat-value">0</p>
         <p class="stat-label">%</p>
     </div>
-
+    <!-- Row 2: Week 3 Security & Blocking -->
     <div class="stat-card">
         <p class="stat-label">Upstream Forwards</p>
         <p id="upstream-forwards" class="stat-value">0</p>
-
-        <p class="stat-label" style="font-size: 0.6rem;">
-            Cache Miss Forwarding
-        </p>
+        <p class="stat-label" style="font-size: 0.6rem;">Recursive Lookups</p>
     </div>
 
     <div class="stat-card">
         <p class="stat-label">Queries / Sec</p>
         <p id="queries-per-sec" class="stat-value">0</p>
-
-        <p class="stat-label" style="font-size: 0.6rem;">
-            Live Resolver Throughput
-        </p>
+        <p class="stat-label" style="font-size: 0.6rem;">Live Resolver Throughput</p>
     </div>
 
-    <!--
     <div class="stat-card">
-        <p class="stat-label">Blocked Domains</p>
-        <p id="blocked-domains" class="stat-value">0</p>
-
-        <p class="stat-label" style="font-size: 0.6rem;">
-            NXDOMAIN Responses
-        </p>
+        <p class="stat-label">Blocked Queries</p>
+        <p id="blocked-queries" class="stat-value">0</p>
+        <p class="stat-label" style="font-size: 0.6rem;">NXDOMAIN Responses</p>
     </div>
 
     <div class="stat-card">
         <p class="stat-label">DNSSEC Validations</p>
         <p id="dnssec-validations" class="stat-value">0</p>
-
-        <p class="stat-label" style="font-size: 0.6rem;">
-            Signed Response Checks
-        </p>
+        <p class="stat-label" style="font-size: 0.6rem;">Signed Response Checks</p>
     </div>
-    -->
+
+    <div class="stat-card">
+        <p class="stat-label">DNSSEC Failures</p>
+        <p id="dnssec-failures" class="stat-value">0</p>
+        <p class="stat-label" style="font-size: 0.6rem;">Validation Errors</p>
+    </div>
 
 
-
+    <!-- Row 3: Domain Lists -->
     <div class="stat-card full-width">
         <p class="stat-label">Top Queried Domains</p>
         <div id="top-domains" class="domain-list">
             <div class="domain-item"><span class="domain-name">Waiting for traffic...</span></div>
+        </div>
+    </div>
+    <!-- Row 4: Security Lists -->
+    <div class="stat-card full-width" style="border-top: 2px solid #e74c3c;">
+        <p class="stat-label">Top Blocked Domains</p>
+        <div id="top-blocked-domains" class="domain-list">
+            <div class="domain-item"><span class="domain-name">No domains blocked yet...</span></div>
         </div>
     </div>
 </div>
@@ -101,36 +100,36 @@
             const data = await response.json();
 
             // 1. Basic Stats
-            document.getElementById('total-queries').innerText = data.queries;
-            document.getElementById('cache-hits').innerText = data.cache_hits;
-
-            // 2. Latency
+            document.getElementById('total-queries').innerText = data.queries || 0;
+            document.getElementById('cache-hits').innerText = data.cache_hits || 0;
+            document.getElementById('queries-per-sec').innerText = (data.queries_per_sec || 0).toFixed(2);
             document.getElementById('avg-latency').innerText = data.avg_latency_ms || 0;
 
-            // DNSSEC + Blocking Stats (TODO)
-            // document.getElementById('blocked-domains').innerText = data.blocked_domains || 0;
-            // document.getElementById('dnssec-validations').innerText = data.dnssec_validations || 0;
+            // 2. DNSSEC + Blocking Stats (TODO)
+            if(document.getElementById('blocked-queries')) {
+                document.getElementById('blocked-queries').innerText = data.blocked_total || 0;
+            }
+            if(document.getElementById('dnssec-validations')) {
+                document.getElementById('dnssec-validations').innerText = data.dnssec_success || 0;
+            }
+            if(document.getElementById('dnssec-failures')) {
+                document.getElementById('dnssec-failures').innerText = data.dnssec_failure || 0;
+            }
 
-            // 3. Upstream + Throughput
+            // 3. Network stats
             document.getElementById('upstream-forwards').innerText = data.upstream_forwards || 0;
 
-            document.getElementById('queries-per-sec').innerText = (data.queries_per_sec || 0).toFixed(2);
-
-
-            // 3. Efficiency Calculation
+            // 4. Efficiency Calculation
             let efficiency = "0.0";
             if (data.queries > 0) {
                 const ratio = data.cache_hits / data.queries;
                 const percent = ratio * 100;
                 efficiency = percent.toFixed(1);
             }
-
             document.getElementById('cache-percent').innerText = efficiency;
 
-            // 4. Top Domains Logic
+            // 5. Top Domains Logic
             const domainContainer = document.getElementById('top-domains');
-
-            // Transform object into sorted array
             const sortedDomains = Object.entries(data.top_domains || {})
                 .sort(([, a], [, b]) => b - a)
                 .slice(0, 5);
@@ -144,6 +143,23 @@
                 `).join('');
             } else {
                 domainContainer.innerHTML = '<div class="domain-item"><span class="domain-name">Waiting for traffic...</span></div>';
+            }
+
+            // 6. Top Blocked Domains Logic
+            const blockedContainer = document.getElementById('top-blocked-domains');
+            const sortedBlocked = Object.entries(data.top_blocked_domains || {})
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 5);
+
+            if (sortedBlocked.length > 0) {
+                blockedContainer.innerHTML = sortedBlocked.map(([name, count]) => `
+                    <div class="domain-item">
+                        <span class="domain-name" style="color: #e74c3c;">${name}</span>
+                        <span class="domain-count">${count} blocks</span>
+                    </div>
+                `).join('');
+            } else {
+                blockedContainer.innerHTML = '<div class="domain-item"><span class="domain-name">No domains blocked yet...</span></div>';
             }
         } catch (err) {
             console.error("Dashboard sync error:", err);

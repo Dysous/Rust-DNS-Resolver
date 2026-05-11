@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DNS Logs</title>
-
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -24,35 +23,32 @@
     <!-- Log Statistics -->
     <div class="stat-card">
         <p class="stat-label">Total Logged Queries</p>
-        <p class="stat-value">0</p>
+        <p id="total-logs" class="stat-value">0</p>
     </div>
 
     <div class="stat-card">
         <p class="stat-label">Flagged Requests</p>
-        <p class="stat-value">0</p>
+        <p id="flagged-logs" class="stat-value">0</p>
     </div>
 
     <div class="stat-card">
         <p class="stat-label">Blocked Requests</p>
-        <p class="stat-value">0</p>
+        <p id="blocked-logs" class="stat-value">0</p>
     </div>
 
     <div class="stat-card">
-        <p class="stat-label">DNSSEC Signed</p>
-        <p class="stat-value">0</p>
+        <p class="stat-label">DNSSEC Status</p>
+        <p id="dnssec-logs" class="stat-value">Active</p>
     </div>
 
-    <!-- Search / Filter -->
+    <!-- Search/filter -->
     <div class="stat-card full-width">
-
         <p class="stat-label">Search & Filters</p>
 
         <div class="filter-bar">
 
-            <label for="search-query" class="sr-only">
-                Search logs
-            </label>
-
+            <!-- search by filtering by domain name or source IP -->
+            <label for="search-query" class="sr-only">Search logs</label>
             <input
                     id="search-query"
                     type="text"
@@ -60,21 +56,19 @@
                     placeholder="Search domain or IP..."
             >
 
-            <label for="status-filter" class="sr-only">
-                Filter by status
-            </label>
-
+            <!-- dropdown for DNS response code status (SAFE, BLOCKED, etc.) -->
+            <label for="status-filter" class="sr-only">Filter by status</label>
             <select id="status-filter" class="filter-select">
                 <option>All Statuses</option>
                 <option>SAFE</option>
-                <option>FLAGGED</option>
                 <option>BLOCKED</option>
+                <option>SERV_FAIL</option>
+                <option>REFUSED</option>
+                <option>BAD_QUERY</option>
             </select>
 
-            <label for="protocol-filter" class="sr-only">
-                Filter by protocol
-            </label>
-
+            <!-- protocol filter by either standard UDP or DoH (DNS over HTTPS) -->
+            <label for="protocol-filter" class="sr-only">Filter by protocol</label>
             <select id="protocol-filter" class="filter-select">
                 <option>All Protocols</option>
                 <option>UDP</option>
@@ -84,64 +78,23 @@
         </div>
     </div>
 
-    <!-- Full DNS Query Log -->
+    <!-- Live log main table -->
     <div class="stat-card full-width">
-
         <p class="stat-label">Live DNS Request Stream</p>
 
         <div class="log-table">
-
-            <!-- Header -->
+            <!-- header -->
             <div class="log-row log-header logs-grid">
-
                 <span>Timestamp</span>
                 <span>Source IP</span>
                 <span>Domain</span>
                 <span>Protocol</span>
                 <span>Latency</span>
-                <span>DNSSEC</span>
                 <span>Status</span>
-
             </div>
 
-            <!-- Normal Entry -->
-            <div class="log-row logs-grid">
-
-                <span>--:--:--</span>
-                <span>0.0.0.0</span>
-                <span>example.com</span>
-                <span>UDP</span>
-                <span>0 ms</span>
-                <span>Signed</span>
-                <span>SAFE</span>
-
-            </div>
-
-            <!-- Flagged Entry -->
-            <div class="log-row logs-grid flagged">
-
-                <span>--:--:--</span>
-                <span>0.0.0.0</span>
-                <span>suspicious.domain</span>
-                <span>DoH</span>
-                <span>0 ms</span>
-                <span>Unsigned</span>
-                <span>FLAGGED</span>
-
-            </div>
-
-            <!-- Blocked Entry -->
-            <div class="log-row logs-grid blocked">
-
-                <span>--:--:--</span>
-                <span>0.0.0.0</span>
-                <span>ads.tracker.net</span>
-                <span>UDP</span>
-                <span>0 ms</span>
-                <span>Unsigned</span>
-                <span>NXDOMAIN</span>
-
-            </div>
+            <!-- dynamic rows -->
+            <div id="log-entries"></div>
 
         </div>
     </div>
@@ -152,6 +105,110 @@
     <span class="dot"></span>
     Live Query Logging Active
 </div>
+
+<script>
+    let allLogs = [];   //global state to store full log set from server
+    //pulls latest logs from backend & triggers filtering/rendering upon data arrival
+    async function fetchLogs() {
+        try {
+            const response = await fetch('/api/logs');
+            allLogs = await response.json();
+            applyFilters();
+        } catch (err) {
+            console.error("Log sync error:", err);
+        }
+    }
+
+    function updateStats(logs) {
+        document.getElementById('total-logs').innerText = logs.length;
+        //count how many queries were manually/automatically blocked
+        document.getElementById('blocked-logs').innerText =
+            logs.filter(l => l.status === "BLOCKED").length;
+        //count flagged items (server errors or malformed queries)
+        document.getElementById('flagged-logs').innerText =
+            logs.filter(l =>
+                l.status === "SERV_FAIL" ||
+                l.status === "REFUSED" ||
+                l.status === "BAD_QUERY"
+            ).length;
+
+        document.getElementById('dnssec-logs').innerText = "Active";
+    }
+
+    //processes search query and dropdown selections, reruns every time user types/selection
+    function applyFilters() {
+        const search = document.getElementById('search-query').value.toLowerCase();
+        const status = document.getElementById('status-filter').value;
+        const protocol = document.getElementById('protocol-filter').value;
+
+        const filtered = allLogs.filter(log => {
+            //checks if searched string exists in domain or IP
+            const matchesSearch =
+                log.domain.toLowerCase().includes(search) ||
+                log.source_ip.toLowerCase().includes(search);
+
+            //checks dropdown matches
+            const matchesStatus =
+                status === "All Statuses" || log.status === status;
+
+            const matchesProtocol =
+                protocol === "All Protocols" || log.protocol === protocol;
+
+            return matchesSearch && matchesStatus && matchesProtocol;
+        });
+
+        updateStats(filtered);
+        renderLogs(filtered);
+    }
+
+    function renderLogs(logs) {
+
+        const container = document.getElementById('log-entries');
+
+        if (logs.length === 0) {
+            container.innerHTML = `
+            <div class="log-row logs-grid">
+                <span>--</span>
+                <span>--</span>
+                <span>No matching logs</span>
+                <span>--</span>
+                <span>--</span>
+                <span>--</span>
+            </div>
+        `;
+            return;
+        }
+        //processes logs by limit new-est top 50
+        container.innerHTML = logs.slice().reverse().slice(0, 50).map(log => {
+            //color codes based on results status
+            let rowClass = "";
+            if (log.status === "BLOCKED") rowClass = "blocked";
+            else if (log.status !== "SAFE") rowClass = "flagged";
+            //converts unix timestamp to human-readable local time
+            const time = new Date(log.timestamp * 1000).toLocaleTimeString();
+
+            return `
+            <div class="log-row logs-grid ${rowClass}">
+                <span>${time}</span>
+                <span>${log.source_ip}</span>
+                <span style="word-break: break-all;">${log.domain}</span>
+                <span>${log.protocol}</span>
+                <span>${log.latency_ms} ms</span>
+                <span>${log.status}</span>
+            </div>
+        `;
+        }).join('');
+    }
+
+    // event listeners
+    document.getElementById('search-query').addEventListener('input', applyFilters);
+    document.getElementById('status-filter').addEventListener('change', applyFilters);
+    document.getElementById('protocol-filter').addEventListener('change', applyFilters);
+
+    // live updates
+    setInterval(fetchLogs, 1500);
+    fetchLogs();
+</script>
 
 </body>
 </html>

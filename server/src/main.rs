@@ -110,6 +110,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let guard = s.domain_counts.lock().unwrap();
                 guard.clone()
             };
+            let blocked_map = {
+                let guard = s.blocked_domains.lock().unwrap();
+                guard.clone()
+            };
             Json(serde_json::json!({
                 "queries": s.total_queries.load(Ordering::Relaxed),
                 "cache_hits": s.cache_hits.load(Ordering::Relaxed),
@@ -117,6 +121,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 "queries_per_sec": s.queries_per_second(),
                 "avg_latency_ms": s.avg_latency(),
                 "top_domains": domain_map,
+                "top_blocked_domains": blocked_map,
+                "blocked_total": s.blocked_total.load(Ordering::Relaxed),
+                "dnssec_success": s.dnssec_success.load(Ordering::Relaxed),
+                "dnssec_failure": s.dnssec_failure.load(Ordering::Relaxed),
             }))
         }))
         .route("/api/logs", get({
@@ -228,7 +236,9 @@ pub async fn handle_request(
     let domain_wire = dnssec::name_to_wire(&domain_name);
 
     if question.qtype == 48 {       // DNSSEC DNSKEY request check
-        return Ok((signer.build_dnskey_answer(request, &domain_wire), domain_name, 0));
+        let resp = signer.build_dnskey_answer(request, &domain_wire);
+        stats.increment_dnssec_success();   // Track successful DNSSEC operation
+        return Ok((resp, domain_name, 0));
     }
 
     stats.record_domain(domain_name.clone());   // record domain in stats
@@ -254,6 +264,7 @@ pub async fn handle_request(
     //check if blocked here
     if blocklist.is_blocked(&domain_name) {
         println!("Blocked domain: {}", domain_name);
+        stats.increment_blocked(&domain_name);
         //send NXDOMAIN to claim it doesn't exist instead of not returning
         return Ok((build_nxdomain_response(request), domain_name, 3));
     }
@@ -266,14 +277,13 @@ pub async fn handle_request(
             stats.cache_hits.fetch_add(1, Ordering::Relaxed);
             let cached_len_ok = entry.response.len() >= 2;
             let mut signed = signer.sign_response(entry.response.clone(), &domain_wire);
-
+            stats.increment_dnssec_success();
             if request.len() >= 2 && cached_len_ok && signed.len() >= 2 {
                 signed[0] = request[0];
                 signed[1] = request[1];
             }
 
-            return Ok((signed, domain_name, 0));   //2 NEW CODE
-            //return Ok(signer.sign_response(cached_response, &domain_wire));
+            return Ok((signed, domain_name, 0));
         }
     }
     println!("cache miss: {}", cache_key);
@@ -299,7 +309,8 @@ pub async fn handle_request(
         }
     }
 
-    let mut final_resp = response;
+    let mut final_resp = signer.sign_response(response, &domain_wire);
+    stats.increment_dnssec_success();
     if request.len() >= 2 && final_resp.len() >= 2 {
         final_resp[0] = request[0];
         final_resp[1] = request[1];
