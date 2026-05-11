@@ -39,6 +39,7 @@ pub struct DnsStats {
     pub cache_hits: AtomicU64,
     pub total_latency_ms: AtomicU64,
     pub upstream_forwards: AtomicU64,
+    pub latency_samples: AtomicU64,
 
     //timing
     pub start_time: Instant,
@@ -56,6 +57,7 @@ impl DnsStats {
             total_latency_ms: AtomicU64::new(0),
             domain_counts: Mutex::new(HashMap::new()),
             upstream_forwards: AtomicU64::new(0),
+            latency_samples: AtomicU64::new(0),
             start_time: Instant::now(),
             logs: Mutex::new(VecDeque::with_capacity(LOG_BUFFER_SIZE)),    //ring buffer capacity can change if needed
         }
@@ -65,8 +67,10 @@ impl DnsStats {
     pub fn increment_queries(&self) { self.total_queries.fetch_add(1, Ordering::Relaxed); }
     pub fn increment_cache_hits(&self) { self.cache_hits.fetch_add(1, Ordering::Relaxed); }
     pub fn increment_upstream(&self) { self.upstream_forwards.fetch_add(1, Ordering::Relaxed); }
-    pub fn add_latency(&self, latency_ms: u64) { self.total_latency_ms.fetch_add(latency_ms, Ordering::Relaxed); }
-
+    pub fn add_latency(&self, latency_ms: u64) {
+        self.total_latency_ms.fetch_add(latency_ms, Ordering::Relaxed);
+        self.latency_samples.fetch_add(1, Ordering::Relaxed); // Track the sample
+    }
     //domain stats
     pub fn record_domain(&self, domain: String) {
         let mut counts = self.domain_counts.lock().unwrap();
@@ -97,7 +101,6 @@ impl DnsStats {
     }
 
     pub fn get_logs(&self) -> Vec<LogEntry> {
-        //self.logs.lock().unwrap().clone()
         self.logs.lock().unwrap().clone().into()
         //self.logs.lock().unwrap().iter().cloned().collect()
     }
@@ -119,10 +122,8 @@ impl DnsStats {
     }
 
     pub fn avg_latency(&self) -> u64 {
-        let total = self.total_queries.load(Ordering::Relaxed);
-        if total == 0 {
-            return 0;
-        }
-        self.total_latency_ms.load(Ordering::Relaxed) / total
+        let samples = self.latency_samples.load(Ordering::Relaxed);
+        if samples == 0 { return 0; }
+        self.total_latency_ms.load(Ordering::Relaxed) / samples
     }
 }
