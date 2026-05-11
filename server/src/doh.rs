@@ -6,6 +6,7 @@ use std::sync::{Arc};
 use tokio::sync::Mutex;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use crate::blocklist::Blocklist;
 use crate::stats::DnsStats;
 use crate::{CacheEntry, handle_request};
@@ -68,6 +69,9 @@ pub async fn doh_query_handler(
         .and_then(|s| s.parse::<std::net::IpAddr>().ok())
         .map(|ip| SocketAddr::new(ip, 0))
         .unwrap_or(src);
+
+    //increment total queries from DoH too
+    state.stats.total_queries.fetch_add(1, Ordering::Relaxed);
 
     let mut cache = state.cache.lock().await;
     let mut threat_detector = state.threat_detector.lock().await;

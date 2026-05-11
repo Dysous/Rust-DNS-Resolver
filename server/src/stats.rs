@@ -178,8 +178,6 @@ impl DnsStats {
             .collect()
     }
 
-    // --- ADD THE NEW WEEK 4 METHODS HERE ---
-
     /// Ingests a threat result from the detector and stores it for the UI.
     pub fn record_threat_result(&self, source_ip: String, domain: String, result: &ThreatResult) {
         // Update Averages (for the dashboard gauges)
@@ -216,8 +214,6 @@ impl DnsStats {
         let events = self.threat_events.lock().unwrap();
         events.iter().cloned().collect()
     }
-
-    // --- END NEW METHODS ---
 
     //helper functions
     pub fn now() -> u64 {
