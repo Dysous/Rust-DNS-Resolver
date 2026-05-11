@@ -3,11 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DNS Cache</title>
-
+    <title>DNS Cache | Monitor</title>
     <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
 
 <div class="navbar">
@@ -20,132 +18,94 @@
 <h1>DNS Cache & Resolver Storage</h1>
 
 <div class="dashboard">
-
-    <!-- Cache Statistics -->
+    <!-- cache stats cards, values from /api/stats -->
+    <!-- num of cached DNS records currently stored in memory -->
     <div class="stat-card">
         <p class="stat-label">Cached Records</p>
-        <p class="stat-value">0</p>
-
-        <p class="stat-label" style="font-size: 0.6rem;">
-            Active In-Memory Entries
-        </p>
+        <p id="cache-count" class="stat-value">0</p>
+        <p class="stat-label" style="font-size: 0.6rem;">Active In-Memory Entries</p>
     </div>
 
+    <!-- num of times a DNS request was served from cache (fast response) -->
     <div class="stat-card">
-        <p class="stat-label">Cache Hits</p>
-        <p class="stat-value">0</p>
-
-        <p class="stat-label" style="font-size: 0.6rem;">
-            Requests Served From Cache
-        </p>
+        <p class="stat-label">Total Cache Hits</p>
+        <p id="cache-hits" class="stat-value">0</p>
+        <p class="stat-label" style="font-size: 0.6rem;">Global Successes</p>
     </div>
 
+    <!-- num of times the resolver had to query upstream DNS (cache miss) -->
     <div class="stat-card">
-        <p class="stat-label">Cache Misses</p>
-        <p class="stat-value">0</p>
-
-        <p class="stat-label" style="font-size: 0.6rem;">
-            Upstream Resolver Forwarding
-        </p>
+        <p class="stat-label">Upstream Forwards</p>
+        <p id="upstream-count" class="stat-value">0</p>
+        <p class="stat-label" style="font-size: 0.6rem;">Cache Misses</p>
     </div>
 
-    <div class="stat-card">
-        <p class="stat-label">TTL Expirations</p>
-        <p class="stat-value">0</p>
-
-        <p class="stat-label" style="font-size: 0.6rem;">
-            Removed Expired Entries
-        </p>
-    </div>
-
-    <!-- Cached Records Table -->
+    <!-- cache records table -->
     <div class="stat-card full-width">
         <p class="stat-label">Current Cached DNS Records</p>
-
         <div class="log-table">
-
             <div class="log-row log-header">
                 <span>Domain</span>
-                <span>Record Type</span>
-                <span>Cached IP</span>
-                <span>TTL</span>
+                <span>Type</span>
+                <span>TTL Remaining</span>
                 <span>Status</span>
             </div>
-
-            <div class="log-row">
-                <span>google.com</span>
-                <span>A</span>
-                <span>142.250.190.14</span>
-                <span>300s</span>
-                <span>CACHED</span>
+            <div id="cache-table-body">
+                <!-- dynamic cache rows injected here -->
             </div>
-
-            <div class="log-row">
-                <span>cloudflare.com</span>
-                <span>A</span>
-                <span>104.16.132.229</span>
-                <span>145s</span>
-                <span>CACHED</span>
-            </div>
-
-            <div class="log-row flagged">
-                <span>expired-entry.test</span>
-                <span>A</span>
-                <span>0.0.0.0</span>
-                <span>0s</span>
-                <span>EXPIRED</span>
-            </div>
-
         </div>
     </div>
-
-    <!-- Cache Activity -->
-    <div class="stat-card full-width">
-        <p class="stat-label">Recent Cache Activity</p>
-
-        <div class="log-table">
-
-            <div class="log-row log-header">
-                <span>Timestamp</span>
-                <span>Domain</span>
-                <span>Operation</span>
-                <span>Latency</span>
-                <span>Source</span>
-            </div>
-
-            <div class="log-row">
-                <span>12:40:01</span>
-                <span>google.com</span>
-                <span>Cache Hit</span>
-                <span>2ms</span>
-                <span>Memory</span>
-            </div>
-
-            <div class="log-row">
-                <span>12:40:07</span>
-                <span>youtube.com</span>
-                <span>Cache Miss</span>
-                <span>42ms</span>
-                <span>8.8.8.8</span>
-            </div>
-
-            <div class="log-row flagged">
-                <span>12:40:15</span>
-                <span>expired-entry.test</span>
-                <span>TTL Expired</span>
-                <span>--</span>
-                <span>Evicted</span>
-            </div>
-
-        </div>
-    </div>
-
 </div>
 
-<div class="status">
-    <span class="dot"></span>
-    Resolver Cache Online
-</div>
+<script>
+    async function updateCachePage() {
+        try {
+            // 1. fetch global stats for the top cards
+            const statsRes = await fetch('/api/stats');
+            const stats = await statsRes.json();
+            document.getElementById('cache-hits').innerText = stats.cache_hits;
+            document.getElementById('upstream-count').innerText = stats.upstream_forwards;
+
+            // 2. fetch all currently stored DNS cache entries
+            const cacheRes = await fetch('/api/cache');
+            const entries = await cacheRes.json();
+
+            // update num of cache records displayed
+            document.getElementById('cache-count').innerText = entries.length;
+
+            const tableBody = document.getElementById('cache-table-body');
+
+            //if cache is empty shows placeholder value of 0
+            if (entries.length === 0) {
+                tableBody.innerHTML = '<div class="log-row"><span>Cache is currently empty.</span></div>';
+                return;
+            }
+
+            tableBody.innerHTML = entries.map(entry => {
+                // Your key format is "domain|type|class"
+                const parts = entry.key.split('|');
+                const domain = parts[0] || "Unknown";
+                const qtype = parts[1] === "1" ? "A" : (parts[1] === "28" ? "AAAA" : parts[1]);
+
+                return `
+                    <div class="log-row">
+                        <span style="word-break: break-all;">${domain}</span>
+                        <span>${qtype}</span>
+                        <span>${entry.expires_in_secs}s</span>
+                        <span style="color: #28a745; font-weight: bold;">LIVE</span>
+                    </div>
+                `;
+            }).join('');
+
+        } catch (err) {
+            console.error("Cache update failed:", err);
+        }
+    }
+
+    // refreshes every 2 seconds to mimic "live" demo
+    setInterval(updateCachePage, 2000);
+    updateCachePage();
+</script>
 
 </body>
 </html>
