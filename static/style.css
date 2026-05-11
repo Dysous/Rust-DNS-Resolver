@@ -30,7 +30,7 @@ h1 {
 
 .dashboard {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
   width: 100%;
   max-width: 800px;
@@ -43,6 +43,8 @@ h1 {
   text-align: center;
   border: 1px solid #334155;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .full-width {
