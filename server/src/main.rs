@@ -1,29 +1,29 @@
-mod packet;
+mod packet;     //dns packet file
 mod stats;
 mod blocklist;
 mod threat;
+//use threat::{ThreatDetector, TunnelEvidence};
 use threat::ThreatDetector;
 mod doh;
 mod dnssec;
-//dns packet file
 
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::net::{SocketAddr, };
+use std::net::SocketAddr;
 // use std::net::{SocketAddr, UdpSocket};
 use std::time::*;
 use std::collections::HashMap;
-
 use std::sync::{Arc};
 use std::sync::atomic::{ Ordering};
 use tokio::net::UdpSocket;
 use axum::{extract::State, routing::get, Router, Json};
 use axum::routing::post;
 use tower_http::services::{ServeDir, ServeFile};
+use tokio::sync::Mutex;
+
 use crate::blocklist::Blocklist;
 use crate::doh::DoHState;
-use tokio::sync::Mutex;
 use crate::dnssec::DnssecSigner;
 
 #[derive(Clone)]
@@ -46,7 +46,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let shared_cache = Arc::new(Mutex::new(HashMap::new()));
 
     let web_cache = Arc::clone(&shared_cache);
-
     let domain = "group8-monitor";
     let token = "960d0d55-e9ce-4846-83c9-188350fde697";
 
@@ -78,15 +77,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let shared_blocklist = Arc::new(Blocklist::load("hosts.txt"));
+    let shared_threat_detector = Arc::new(Mutex::new(ThreatDetector::new()));   //NEW CODE 1 LINE
     let dns_stats = Arc::clone(&shared_stats);
     let dns_blocklist = Arc::clone(&shared_blocklist);
 
     //shared cache for udp listener and the DoH handling
     let dns_cache = Arc::clone(&shared_cache);
     let dns_signer = Arc::clone(&signer);
+    let dns_threats = Arc::clone(&shared_threat_detector);  //NEW CODE 1 LINE
 
     tokio::spawn(async move {
-        if let Err(e) = run_udp_listener("0.0.0.0:53", "dns_requests.log", dns_stats, dns_blocklist, dns_cache, dns_signer).await {
+        if let Err(e) = run_udp_listener(
+            "0.0.0.0:53",
+            "dns_requests.log",
+            dns_stats,
+            dns_blocklist,
+            dns_cache,
+            dns_signer,
+            dns_threats
+        ).await {
             eprintln!("Error: {}", e);
         }
     });
@@ -101,6 +110,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         blocklist: Arc::clone(&shared_blocklist),
         cache: Arc::clone(&shared_cache),
         signer: Arc::clone(&signer),
+        threat_detector: Arc::clone(&shared_threat_detector),
     };
 
     let app = Router::new()
@@ -125,6 +135,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 "blocked_total": s.blocked_total.load(Ordering::Relaxed),
                 "dnssec_success": s.dnssec_success.load(Ordering::Relaxed),
                 "dnssec_failure": s.dnssec_failure.load(Ordering::Relaxed),
+                "avg_threat_score": s.get_avg_threat_score(),   // NEW CODE 1 line
             }))
         }))
         .route("/api/logs", get({
@@ -141,11 +152,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let entries: Vec<_> = guard.iter().map(|(k, v)| {
                     serde_json::json!({
                 "key": k,
-                "expires_at": v.expires_at.elapsed().as_secs()
+                "expires_in_secs": v.expires_at
+                    .saturating_duration_since(Instant::now())
+                    .as_secs()
             })
                 }).collect();
 
                 Json(entries)
+            }
+        }))
+        // NEW: Security Feed Timeline
+        .route("/api/threats", get({
+            let s = Arc::clone(&shared_stats);
+            move || async move { Json(s.get_threat_events()) }
+        }))
+        // NEW: DNS Tunneling Watchlist (Detailed evidence)
+        .route("/api/watchlist", get({
+            let t = Arc::clone(&shared_threat_detector);
+            move || async move {
+                let detector = t.lock().await;
+                Json(detector.watchlist())
             }
         }))
         .with_state(web_stats)
@@ -157,7 +183,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .fallback_service(ServeDir::new(static_dir));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
-    println!("Web Monitor Live At https://{}", addr);
+    println!("Web Monitor Live At http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     //getting http connection info now for /dns-query integration with stats later
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
@@ -173,25 +199,34 @@ async fn run_udp_listener(
     blocklist: Arc<Blocklist>,
     cache: Arc<Mutex<HashMap<String, CacheEntry>>>,
     signer: Arc<DnssecSigner>,
+    threat_detector: Arc<Mutex<ThreatDetector>>, // NEW CODE 1
 ) -> Result<(), Box<dyn Error>> {
     let socket = UdpSocket::bind(bind_addr).await?;
     println!("UDP listener running on {}", bind_addr);
 
     let mut buf = [0u8; 512];
-    let mut threat_detector = ThreatDetector::new();
+    //let mut threat_detector = ThreatDetector::new();
 
     loop {
         let (size, src) = socket.recv_from(&mut buf).await?;
         let request = &buf[..size];
-
         println!("\nreceived {} bytes from {}", size, src);
         print_hex(request);
+
+
+        // Access the shared cache and threat detector
+        let mut cache_guard = cache.lock().await;       //NEW CODE 2
+        let mut threat_guard = threat_detector.lock().await;
+        /*the cache_guard and threat_guard is correct for week 4 implementation
+        but be very careful to never lock these in a different order anywhere else
+        or the program could freeze/deadlock*/
+
 
         stats.total_queries.fetch_add(1, Ordering::Relaxed);
         let start = Instant::now();
         let (response, domain, rcode) = {//quickly lock shared resource
-            let mut guard = cache.lock().await;
-            handle_request(request, src, &mut guard, &stats, &blocklist,&mut threat_detector, &signer).await?
+            //let mut guard = cache.lock().await;
+            handle_request(request, src, &mut cache_guard, &stats, &blocklist, &mut threat_guard, &signer).await?
         };
         // print_hex(&response);
         socket.send_to(&response, src).await?;
@@ -214,7 +249,7 @@ pub async fn handle_request(
     blocklist: &Blocklist,
     threat_detector: &mut ThreatDetector,
     signer: &DnssecSigner,
-)-> Result<(Vec<u8>, String, u8), Box<dyn Error>> { // NEW CODE
+)-> Result<(Vec<u8>, String, u8), Box<dyn Error>> {
         /* for the above line of code^^
         Vec<u8> = DNS response
         String = domain
@@ -244,6 +279,7 @@ pub async fn handle_request(
     stats.record_domain(domain_name.clone());   // record domain in stats
 
     let threat_result = threat_detector.analyze(src.ip(), &domain_name);
+    stats.record_threat_result(src.ip().to_string(), domain_name.clone(), &threat_result);  // NEW CODE 1
     if threat_result.flagged {
         println!(
             "THREAT FLAGGED: {} score={} tunneling={} reasons={:?}",

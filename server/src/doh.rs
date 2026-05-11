@@ -27,7 +27,8 @@ pub struct DoHState {
     pub stats: Arc<DnsStats>,
     pub blocklist: Arc<Blocklist>,
     pub cache: Arc<Mutex<HashMap<String, CacheEntry>>>,
-    pub signer: Arc<DnssecSigner>, 
+    pub signer: Arc<DnssecSigner>,
+    pub threat_detector: Arc<Mutex<ThreatDetector>>,
 }
 
 //body should be raw DNS wire format query
@@ -59,10 +60,10 @@ pub async fn doh_query_handler(
     }
 
     let mut cache = state.cache.lock().await;
-    let mut threat_detector = ThreatDetector::new();
+    let mut threat_detector = state.threat_detector.lock().await;
     let start = std::time::Instant::now();  // Start timer for latency tracking
 
-    match handle_request(&body, src, &mut cache, &state.stats, &state.blocklist,&mut threat_detector, &state.signer).await {
+    match handle_request(&body, src, &mut cache, &state.stats, &state.blocklist,&mut *threat_detector, &state.signer).await {
         Ok((response_bytes, domain, rcode)) => {
             let latency = start.elapsed().as_millis() as u64;
             state.stats.log_request(
