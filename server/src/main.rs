@@ -359,6 +359,8 @@ fn evict_expired(cache: &mut HashMap<String, CacheEntry>) {
     cache.retain(|_, entry| entry.expires_at > now);
 }
 
+// extracts the smallest TTL from the DNS answer section
+// used to determine cache expiration time
 fn extract_min_ttl(response: &[u8]) -> Option<u32> {
     if response.len() < 12 {
         return None;
@@ -370,6 +372,8 @@ fn extract_min_ttl(response: &[u8]) -> Option<u32> {
     packet.answers.iter().map(|r| r.ttl).min()
 }
 
+// writes flagged threat events to persistent log storage
+// includes source IP, threat score, and detection reasons
 fn log_threat(
     log_path: &str,
     src: SocketAddr,

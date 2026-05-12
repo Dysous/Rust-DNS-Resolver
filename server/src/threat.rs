@@ -1,3 +1,9 @@
+// Threat detection module for DNS monitoring
+// This file analyzes incoming DNS queries and assigns a threat score based on
+// patterns commonly seen in DNS tunneling, malware beaconing, and data exfiltration
+// The detector does not block traffic directly. It flags suspicious queries and
+// maintains a watchlist so the dashboard/logging layer can show evidence.
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -28,6 +34,10 @@ struct DomainQueryEvent {
     seen_at: Instant,
 }
 
+// stores rolling state used to detect suspicious DNS behavior over time
+// HashMaps allow tracking activity per IP and per base domain
+// VecDeque is used for domain_events so old queries can be removed efficiently
+// from the front of the queue during the 60 second sliding window
 #[derive(Debug)]
 pub struct ThreatDetector {
     query_times_by_ip: HashMap<IpAddr, Vec<Instant>>,
@@ -47,6 +57,9 @@ impl ThreatDetector {
         }
     }
 
+    // runs all threat checks for a single DNS query
+    // each suspicious signal adds to the score. If the score reaches the threshold,
+    // the query is flagged and the reason list explains what triggered it
     pub fn analyze(&mut self, src_ip: IpAddr, domain: &str) -> ThreatResult {
         let mut score = 0;
         let mut reasons = Vec::new();
@@ -103,6 +116,8 @@ impl ThreatDetector {
             .collect()
     }
 
+    // tracks how many DNS queries a source IP has made in the last 60 seconds
+    //high number of recent queries can indicate automated traffic or beaconing
     fn track_frequency(&mut self, src_ip: IpAddr) -> usize {
         let now = Instant::now();
         let window = Duration::from_secs(60);
@@ -112,6 +127,8 @@ impl ThreatDetector {
         entries.len()
     }
 
+    // tracks how many unique subdomains appear under the same base domain
+    // DNS tunneling often creates many different subdomains to carry encoded data
     fn track_subdomain_diversity(&mut self, domain: &str) -> usize {
         let Some((base_domain, subdomain)) = split_base_and_subdomain(domain) else {
             return 0;
@@ -125,7 +142,9 @@ impl ThreatDetector {
 
         entry.len()
     }
-
+    // detects likely DNS tunneling by looking at behavior over a 60 second window
+    // if one base domain receives many unique, high-entropy subdomains quickly,
+    // it is added to the tunneling watchlist with evidence for later review
     fn track_tunneling_pattern(&mut self, domain: &str) -> bool {
         let Some((base_domain, subdomain)) = split_base_and_subdomain(domain) else {
             return false;
