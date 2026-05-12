@@ -1,4 +1,4 @@
-mod packet;     //dns packet file
+pub mod packet;
 mod stats;
 mod blocklist;
 mod threat;
@@ -33,7 +33,7 @@ pub struct CacheEntry {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let rng = ring::rand::SystemRandom::new();
     let pk8_bytes = ring::signature::EcdsaKeyPair::generate_pkcs8(&ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING, &rng)
         .expect("Failed to generate PKCS8 BYTES");
@@ -54,7 +54,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let url = format!("http://www.duckdns.org/update?domains={}&token={}", domain, token);
 
             let mut interval = tokio::time::interval(Duration::from_secs(60));
-
             loop { //update duck dns binding loop
                 interval.tick().await;
                 match client.get(&url).send().await {
@@ -198,65 +197,54 @@ async fn run_udp_listener(
     cache: Arc<Mutex<HashMap<String, CacheEntry>>>,
     signer: Arc<DnssecSigner>,
     threat_detector: Arc<Mutex<ThreatDetector>>,
-) -> Result<(), Box<dyn Error>> {
-    let socket = UdpSocket::bind(bind_addr).await?;
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let socket = Arc::new(UdpSocket::bind(bind_addr).await?);
     println!("UDP listener running on {}", bind_addr);
-
-    let mut buf = [0u8; 512];
-    //let mut threat_detector = ThreatDetector::new();
-
     loop {
+        let mut buf = [0u8; 4096];
         let (size, src) = socket.recv_from(&mut buf).await?;
-        let request = &buf[..size];
+        let request: Vec<u8> = buf[..size].to_vec();
+
         println!("\nreceived {} bytes from {}", size, src);
-        print_hex(request);
+        print_hex(&request);
 
+        let stats = Arc::clone(&stats);
+        let blocklist = Arc::clone(&blocklist);
+        let cache = Arc::clone(&cache);
+        let signer = Arc::clone(&signer);
+        let threat_detector = Arc::clone(&threat_detector);
+        let socket = Arc::clone(&socket);
 
-        // Access the shared cache and threat detector
-        let mut cache_guard = cache.lock().await;
-        let mut threat_guard = threat_detector.lock().await;
-        /*the cache_guard and threat_guard is correct for week 4 implementation
-        but be very careful to never lock these in a different order anywhere else
-        or the program could freeze/deadlock*/
-
-
-        stats.total_queries.fetch_add(1, Ordering::Relaxed);
-        let start = Instant::now();
-        let (response, domain, rcode) = {//quickly lock shared resource
-            //let mut guard = cache.lock().await;
-            handle_request(request, src, &mut cache_guard, &stats, &blocklist, &mut threat_guard, &signer).await?
-        };
-        // print_hex(&response);
-        socket.send_to(&response, src).await?;
-        let latency = start.elapsed().as_millis() as u64;
-        stats.log_request(
-            src.ip().to_string(),
-            domain.to_string(),
-            rcode,
-            latency,
-            "UDP".to_string(),
-        );
+        tokio::spawn(async move {
+            stats.total_queries.fetch_add(1, Ordering::Relaxed);
+            let start = Instant::now();
+            match handle_request(&request, src, &cache, &stats, &blocklist, &threat_detector, &signer).await {
+                Ok((response, domain, rcode)) => {
+                    let _ = socket.send_to(&response, src).await;
+                    let latency = start.elapsed().as_millis() as u64;
+                    stats.log_request(src.ip().to_string(), domain, rcode, latency, "UDP".to_string());
+                }
+                Err(e) => eprintln!("handle_request error: {}", e),
+            }
+        });
     }
 }
 
 pub async fn handle_request(
     request: &[u8],
     src: SocketAddr,
-    cache: &mut HashMap<String, CacheEntry>,
-    stats: &stats::DnsStats,
-    blocklist: &Blocklist,
-    threat_detector: &mut ThreatDetector,
-    signer: &DnssecSigner,
-)-> Result<(Vec<u8>, String, u8), Box<dyn Error>> {
+    cache: &Arc<Mutex<HashMap<String, CacheEntry>>>,
+    stats: &Arc<stats::DnsStats>,
+    blocklist: &Arc<Blocklist>,
+    threat_detector: &Arc<Mutex<ThreatDetector>>,
+    signer: &Arc<DnssecSigner>,
+)-> Result<(Vec<u8>, String, u8), Box<dyn Error + Send + Sync>> {
         /* for the above line of code^^
         Vec<u8> = DNS response
         String = domain
         u8 = DNS RCODE
         */
-    evict_expired(cache);
-
     let packet = packet::DnsPacket::from_bytes(request);
-
     let question = match packet.questions.first() {
         Some(q) => q,
         None => {
@@ -274,7 +262,10 @@ pub async fn handle_request(
         return Ok((resp, domain_name, 0));
     }
 
-    let threat_result = threat_detector.analyze(src.ip(), &domain_name);
+    let threat_result = {
+        let mut td = threat_detector.lock().await;
+        td.analyze(src.ip(), &domain_name)
+    };
     // only track non-blocked domains in "top queried domains"
     stats.record_threat_result(src.ip().to_string(), domain_name.clone(), &threat_result);
     if threat_result.flagged {
@@ -305,20 +296,25 @@ pub async fn handle_request(
     stats.record_domain(domain_name.clone());   // record domain in stats
     let cache_key = format!("{}|{}|{}", question.name, question.qtype, question.qclass);
 
-    if let Some(entry) = cache.get(&cache_key) {
-        if Instant::now() < entry.expires_at {
-            println!("cache hit: {}", cache_key);
-            stats.cache_hits.fetch_add(1, Ordering::Relaxed);
-            let cached_len_ok = entry.response.len() >= 2;
-            let mut signed = signer.sign_response(entry.response.clone(), &domain_wire);
-            stats.increment_dnssec_success();
-            if request.len() >= 2 && cached_len_ok && signed.len() >= 2 {
-                signed[0] = request[0];
-                signed[1] = request[1];
-            }
+    //lock then clone the entry if hit and drop the lock immediately
+    let cached = {
+        let mut guard = cache.lock().await;
+        evict_expired(&mut guard);
+        guard.get(&cache_key).and_then(|e| {
+            if Instant::now() < e.expires_at { Some(e.response.clone()) } else { None }
+        })
+    };
 
-            return Ok((signed, domain_name, 0));
+    if let Some(response) = cached {
+        println!("cache hit: {}", cache_key);
+        stats.cache_hits.fetch_add(1, Ordering::Relaxed);
+        let mut signed = signer.sign_response(response, &domain_wire);
+        stats.increment_dnssec_success();
+        if request.len() >= 2 && signed.len() >= 2 {
+            signed[0] = request[0];
+            signed[1] = request[1];
         }
+        return Ok((signed, domain_name, 0));
     }
     println!("cache miss: {}", cache_key);
 
@@ -332,7 +328,8 @@ pub async fn handle_request(
 
     if let Some(ttl) = extract_min_ttl(&response) {
         if ttl > 0 {
-            cache.insert(
+            let mut guard = cache.lock().await;
+            guard.insert(
                 cache_key,
                 CacheEntry {
                     response: response.clone(),
@@ -358,6 +355,8 @@ fn evict_expired(cache: &mut HashMap<String, CacheEntry>) {
     cache.retain(|_, entry| entry.expires_at > now);
 }
 
+// extracts the smallest TTL from the DNS answer section
+// used to determine cache expiration time
 fn extract_min_ttl(response: &[u8]) -> Option<u32> {
     if response.len() < 12 {
         return None;
@@ -369,13 +368,15 @@ fn extract_min_ttl(response: &[u8]) -> Option<u32> {
     packet.answers.iter().map(|r| r.ttl).min()
 }
 
+// writes flagged threat events to persistent log storage
+// includes source IP, threat score, and detection reasons
 fn log_threat(
     log_path: &str,
     src: SocketAddr,
     domain: &str,
     score: u32,
     reasons: &[String],
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut file = OpenOptions::new().create(true).append(true).open(log_path)?;
     let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
@@ -388,7 +389,7 @@ fn log_threat(
     Ok(())
 }
 
-async fn forward_to_upstream(request: &[u8], upstream: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+async fn forward_to_upstream(request: &[u8], upstream: &str) -> Result<Vec<u8>, Box<dyn Error + Send + Sync>> {
     let socket = UdpSocket::bind("0.0.0.0:0").await?;
     socket.send_to(request, upstream).await?;
     let mut buf = [0u8; 512];
