@@ -47,9 +47,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let web_cache = Arc::clone(&shared_cache);
     let domain = "group8-monitor";
-    let token = "960d0d55-e9ce-4846-83c9-188350fde697";
-
-    if std::env::var("ENABLE_DUCKDNS").is_ok() {
+    
+    if let Ok(token) = std::env::var("DUCKDNS_TOKEN") {
         tokio::spawn(async move {
             let client = reqwest::Client::new();
             let url = format!("http://www.duckdns.org/update?domains={}&token={}", domain, token);
