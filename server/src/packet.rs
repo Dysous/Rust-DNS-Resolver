@@ -14,7 +14,8 @@ impl BytePacketBuffer {
             buf: [0; 512],
             pos: 0
         };
-        buffer.buf[..data.len()].copy_from_slice(data); //can overflow after 512 bytes, need fix
+        let n = data.len().min(512); buffer.buf[..n].copy_from_slice(&data[..n]);
+        //buffer.buf[..data.len()].copy_from_slice(data); //can overflow after 512 bytes, need fix
         buffer
     }
 
@@ -31,7 +32,7 @@ impl BytePacketBuffer {
         u16::from_be_bytes([self.read(), self.read()])
     }
 
-    pub fn get(&self, pos: usize) -> u8 { self.buf[pos] }   //can cause out of bound issues later
+    pub fn get(&self, pos: usize) -> u8 { if pos >= 512 { return 0; } self.buf[pos] }
 
     pub fn write(&mut self, val: u8) -> Result<(), String>{
         if self.pos >= 512 {
@@ -51,15 +52,15 @@ impl BytePacketBuffer {
         for label in name.split('.') {
             let len = label.len();
             if len > 63 {
-                return Err(format!("Name length should be less than 63 chars"));
+                return Err("Name length should be less than 63 chars".to_string());
             }
-            self.write(len as u8);
+            self.write(len as u8)?;
 
             for b in label.as_bytes() {
-                self.write(*b);
+                self.write(*b)?;
             }
         }
-        self.write(0);
+        self.write(0)?;
         Ok(())
     }
 }
@@ -68,7 +69,7 @@ impl BytePacketBuffer {
 #[derive(Debug)]
 pub struct DnsHeader {
     pub id: u16,                //id num
-    pub flags: u16,             //flags (QR, Opcode, etc)
+    pub flags: u16,             //flags (QR, Opcode, etc.)
     pub qcount: u16,           //question count
     pub anscount: u16,           //answer count
     pub authcount: u16,           //authority count
@@ -199,8 +200,9 @@ impl DnsPacket {
             pos += 1;
             if len == 0 { break; }
 
+            if pos + len as usize > 512 { break; }
             let label = &buffer.buf[pos..pos + len as usize];
-            labels.push(str::from_utf8(label).unwrap().to_string());
+            labels.push(String::from_utf8_lossy(label).into_owned());
             pos += len as usize;
         }
 

@@ -41,7 +41,10 @@ impl DnssecSigner {
         rdata.push(domain_wire.iter().filter(|&&b| b > 0 && b < 32).count() as u8); // Label count
         rdata.extend_from_slice(&3600u32.to_be_bytes());
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as u32)
+            .unwrap_or(0);
         rdata.extend_from_slice(&(now + 86400).to_be_bytes());
         rdata.extend_from_slice(&now.to_be_bytes());
         rdata.extend_from_slice(&self.key_tag.to_be_bytes());

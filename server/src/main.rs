@@ -114,11 +114,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .route_service("/", ServeFile::new(index_file))
         .route("/api/stats", get(move | State(s): State<Arc<stats::DnsStats>> | async move {
             let domain_map = {
-                let guard = s.domain_counts.lock().unwrap();
+                let guard = s.domain_counts.lock().unwrap_or_else(|e| e.into_inner());
                 guard.clone()
             };
             let blocked_map = {
-                let guard = s.blocked_domains.lock().unwrap();
+                let guard = s.blocked_domains.lock().unwrap_or_else(|e| e.into_inner());
                 guard.clone()
             };
             Json(serde_json::json!({
@@ -392,7 +392,7 @@ fn log_threat(
 async fn forward_to_upstream(request: &[u8], upstream: &str) -> Result<Vec<u8>, Box<dyn Error + Send + Sync>> {
     let socket = UdpSocket::bind("0.0.0.0:0").await?;
     socket.send_to(request, upstream).await?;
-    let mut buf = [0u8; 512];
+    let mut buf = [0u8; 4096];
     let result = tokio::time::timeout(Duration::from_secs(5), socket.recv_from(&mut buf)).await;
     match result {
         Ok(Ok((size, _))) => Ok(buf[..size].to_vec()),

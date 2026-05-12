@@ -37,7 +37,7 @@ struct DomainQueryEvent {
 // stores rolling state used to detect suspicious DNS behavior over time
 // HashMaps allow tracking activity per IP and per base domain
 // VecDeque is used for domain_events so old queries can be removed efficiently
-// from the front of the queue during the 60 second sliding window
+// from the front of the queue during the 60-second sliding window
 #[derive(Debug)]
 pub struct ThreatDetector {
     query_times_by_ip: HashMap<IpAddr, Vec<Instant>>,
@@ -142,7 +142,7 @@ impl ThreatDetector {
 
         entry.len()
     }
-    // detects likely DNS tunneling by looking at behavior over a 60 second window
+    // detects likely DNS tunneling by looking at behavior over a 60-second window
     // if one base domain receives many unique, high-entropy subdomains quickly,
     // it is added to the tunneling watchlist with evidence for later review
     fn track_tunneling_pattern(&mut self, domain: &str) -> bool {
