@@ -11,15 +11,14 @@ pub struct DnssecSigner {
 }
 
 impl DnssecSigner {
-    /// Loads or creates a new signer. You should ideally load your pk8 from a file.
     pub fn new(key_pair: EcdsaKeyPair) -> Self {
         let public_key = key_pair.public_key().as_ref();
 
         // Build the DNSKEY RDATA to calculate the real key tag
         let mut dnskey_rdata = Vec::new();
         dnskey_rdata.extend_from_slice(&256u16.to_be_bytes()); // Flags: Zone Key
-        dnskey_rdata.push(3);                                  // Protocol
-        dnskey_rdata.push(DNSSEC_ALGORITHM_ECDSAP256);        // Alg 13
+        dnskey_rdata.push(3);
+        dnskey_rdata.push(DNSSEC_ALGORITHM_ECDSAP256);         //mathematical algorithm to sign
         dnskey_rdata.extend_from_slice(public_key);
 
         let key_tag = calculate_key_tag(&dnskey_rdata);
@@ -27,14 +26,15 @@ impl DnssecSigner {
         Self { key_pair, key_tag }
     }
 
+    //signs response that is sent to client
     pub fn sign_response(&self, mut packet_bytes: Vec<u8>, domain_wire: &[u8]) -> Vec<u8> {
     //pub fn sign_response(&self, packet_bytes: &[u8], domain_wire: &[u8]) -> Vec<u8> {
         let rng = ring::rand::SystemRandom::new();
 
-        // In a strict implementation, we'd sign the canonical RRSet,
-        // but signing the whole packet is a common proxy shortcut.
+
+        //signature
         let sig = self.key_pair.sign(&rng, &packet_bytes).expect("Signing failed");
-        
+
         let mut rdata = Vec::new();
         rdata.extend_from_slice(&1u16.to_be_bytes()); // Type Covered (A)
         rdata.push(DNSSEC_ALGORITHM_ECDSAP256);
@@ -58,7 +58,6 @@ impl DnssecSigner {
 
         packet_bytes.extend_from_slice(&rrsig_record);
 
-        // Update ANCOUNT in DNS Header
         let mut anc = u16::from_be_bytes([packet_bytes[6], packet_bytes[7]]);
         anc += 1;
         let anc_bytes = anc.to_be_bytes();
@@ -68,6 +67,7 @@ impl DnssecSigner {
         packet_bytes
     }
 
+    //builds dnskey response
     pub fn build_dnskey_answer(&self, request: &[u8], domain_wire: &[u8]) -> Vec<u8> {
         let mut response = request.to_vec();
 
@@ -98,6 +98,7 @@ impl DnssecSigner {
     }
 }
 
+//identifies which public key was used
 fn calculate_key_tag(rdata: &[u8]) -> u16 {
     let mut ac: u32 = 0;
     for (i, &byte) in rdata.iter().enumerate() {
@@ -107,6 +108,7 @@ fn calculate_key_tag(rdata: &[u8]) -> u16 {
     (ac & 0xFFFF) as u16
 }
 
+//converts domain name into DNS wire format
 pub fn name_to_wire(name: &str) -> Vec<u8> {
     let mut wire = Vec::new();
     for part in name.split('.') {
