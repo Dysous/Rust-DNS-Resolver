@@ -226,6 +226,10 @@ impl DnsPacket {
         buffer.buf[..buffer.pos].to_vec()   //week 1 logic, will overflow after 512 bytes later
     }
 }
+
+// reads a DNS resource record from the packet buffer
+// resource records appear in the answer, authority, and additional
+// sections of a DNS packet and contain the actual response data
 impl DnsRecord {
     pub fn read(buffer: &mut BytePacketBuffer) -> Self {
         let name = DnsPacket::parse_name(buffer);
