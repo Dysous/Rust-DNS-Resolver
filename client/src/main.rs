@@ -1,10 +1,7 @@
-//use std::{env, io};
 use std::io;
 use std::error::Error;
 use hickory_resolver::TokioAsyncResolver;
 use hickory_resolver::config::*;
-//use hickory_resolver::Resolver;
-//use hickory_resolver::name_server::TokioConnectionProvider;
 
 //Client should be able to query our AWS dns server or any dns server
 //this is a test client and not a huge part of our project except to demonstrate dns requests not over HTTP
