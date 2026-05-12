@@ -124,7 +124,7 @@ impl DnsStats {
     pub fn increment_blocked(&self, domain: &str) {
         self.blocked_total.fetch_add(1, Ordering::Relaxed);
 
-        let mut blocked = self.blocked_domains.lock().unwrap();
+        let mut blocked = self.blocked_domains.lock().unwrap_or_else(|e| e.into_inner());
         *blocked.entry(domain.to_string()).or_insert(0) += 1;
     }
     pub fn increment_dnssec_success(&self) {
@@ -136,7 +136,7 @@ impl DnsStats {
 
     //domain stats
     pub fn record_domain(&self, domain: String) {
-        let mut counts = self.domain_counts.lock().unwrap();
+        let mut counts = self.domain_counts.lock().unwrap_or_else(|e| e.into_inner());
         *counts.entry(domain).or_insert(0) += 1;
     }
 
@@ -149,7 +149,7 @@ impl DnsStats {
         latency_ms: u64,
         protocol: String,
     ) {
-        let mut logs = self.logs.lock().unwrap();
+        let mut logs = self.logs.lock().unwrap_or_else(|e| e.into_inner());
         if logs.len() >= LOG_BUFFER_SIZE {
             logs.pop_front();
         }
@@ -164,7 +164,7 @@ impl DnsStats {
     }
 
     pub fn get_logs(&self) -> Vec<LogEntryView> {
-        let logs = self.logs.lock().unwrap();
+        let logs = self.logs.lock().unwrap_or_else(|e| e.into_inner());
         logs.iter()
             .map(|log| LogEntryView {
                 timestamp: log.timestamp,
@@ -186,7 +186,7 @@ impl DnsStats {
 
         // Filter: Only store in the "Security Feed" if it's actually suspicious
         if result.score > 10 || result.likely_tunneling {
-            let mut events = self.threat_events.lock().unwrap();
+            let mut events = self.threat_events.lock().unwrap_or_else(|e| e.into_inner());
             if events.len() >= 1000 {
                 events.pop_front();
             }
@@ -211,7 +211,7 @@ impl DnsStats {
 
     /// Helper to get all threat events for the frontend table
     pub fn get_threat_events(&self) -> Vec<ThreatEvent> {
-        let events = self.threat_events.lock().unwrap();
+        let events = self.threat_events.lock().unwrap_or_else(|e| e.into_inner());
         events.iter().cloned().collect()
     }
 
