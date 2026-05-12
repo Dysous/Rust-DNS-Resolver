@@ -51,45 +51,45 @@ Our resolver included a packet parser, caching with TTL expiration, DNSSEC valid
 monitoring dashboard. 
 
 - What novel work did you do?
-  - For the statistics and monitoring infrastructure/dashboard, we worked on the internal API 
-endpoints, in-memory logging system, live query stream, cache monitoring page, DNSSEC statistics, and threat 
-visualization pages. Most of the work for the website required connecting the separate backend systems together 
-and integrating them into the resolver pipeline or exposing them to the frontend. We connected the DNS resolver, 
-stats engine, and frontend dashboard pages to track and display live info about blocked domains, threat scores, 
-cache hits, tunneling alerts, and DNSSEC activity.
+  - Sofia
+        - For the statistics and monitoring infrastructure/dashboard, we worked on the internal API 
+      endpoints, in-memory logging system, live query stream, cache monitoring page, DNSSEC statistics, and threat 
+      visualization pages. Most of the work for the website required connecting the separate backend systems together 
+      and integrating them into the resolver pipeline or exposing them to the frontend. We connected the DNS resolver, 
+      stats engine, and frontend dashboard pages to track and display live info about blocked domains, threat scores, 
+      cache hits, tunneling alerts, and DNSSEC activity.
 
+  - Josh - I implemented DNSSEC for the connection between our client and the DNS resolver. It is not a true implementation of DNSSEC as we are limited with resources, but I implemented a general format for how it works. The client sends a request to the server to receive the DNSKEY that can be used to verify responses sent from the server. The server builds the DNSKEY response and then sends it. The client caches it so that it can ensure verified communication with the server. When the client asks for the IP address of a website, the server will sign the response using an RRSIG that is created using the server’s private key. The client uses the DNSKEY response cached from earlier in order to verify that the server did indeed send the message and not a bad actor. The response will contain a RRSIG that can be verified using the DNSKEY.
+  
+  - Chase - I implemented a DNS server featuring a core UDP listener on port 53 that handles query parsing, upstream forwarding to 8.8.8.8, and in-memory TTL caching. To secure the traffic, I developed a phase-one threat detection engine that calculates Shannon entropy for subdomain labels and monitors for anomalies like excessive label lengths, high query frequency per IP, and subdomain diversity. This system specifically targets DNS tunneling by tracking per-domain patterns over time, flagging bursts of high-entropy queries and maintaining a detailed watchlist of suspicious domains with associated evidence and threat scores.
+  - Noah - Worked with CI/CD and AWS, setting up architecture on EC2, pi-hole domain blocking, and DNS over HTTPS. A lot of the work was setting up architecture and things to enable other features on the project. One of the most confusing things was figuring out how to deal with HTTPS encapsulation of DNS requests, which I ended up unpacking by letting Caddy receive the HTTPS and send the decrypted HTTP requests to the program.
 - What did you learn?
-  - The initial foundation of our project focused on learning about DNS at the packet level, such as DNS headers, 
-name compression, caching, response codes, and DNSSEC records. We also further learned about atomics, mutexes, 
-Tokio async networking, and thread safe shared states in Rust programming. We learned how to connect our Rust 
-backend to a live monitoring dashboard that continuously updated the DNS statistics by using JSON APIs and 
-JavaScript fetch requests.
+  - The initial foundation of our project focused on learning about DNS at the packet level, such as DNS headers, name compression, caching, response codes, and DNSSEC records. We also further learned about atomics, mutexes, Tokio async networking, and thread safe shared states in Rust programming. We learned how to connect our Rust backend to a live monitoring dashboard that continuously updated the DNS statistics by using JSON APIs and JavaScript fetch requests.
+
+  - We also learned about encapsulation and how useful it is to unpack certain things to utilize different tools available to unpack things on different layers of the OSI model. We also learned how to secure our code production, making sure that code is not stored on the server itself and only necessary ports are exposed.
+
+  - Security features (what makes dns tunneling)
+
+  - DNSSEC (public key encryption)
 
 - What was challenging?
-  - When compiling the statistics for our website, my biggest challenge was integration/connection because many systems 
-worked independently. For example, the logic for some security and threat-detection components existed but were not 
-connected to the resolver loop, stats engine, or frontend APIs, so events were not able to appear on the dashboard 
-until further connective code was implemented. Likewise, for each use case this often involved having to change 
-logic across 2-4 different files to make sure it was still working correctly and was being tracked accurately.
-Another challenge was concurrency and synchronization. Because the resolver handled the network traffic asynchronously, 
-it was important to pick whether data (logs, cache, statistics) would be recorded as atomics or mutexes to avoid race 
-conditions and deadlocks.
+  - When compiling the statistics for our website, my biggest challenge was integration/connection because many systems worked independently. For example, the logic for some security and threat-detection components existed but were not connected to the resolver loop, stats engine, or frontend APIs, so events were not able to appear on the dashboard until further connective code was implemented. Likewise, for each use case this often involved having to change logic across 2-4 different files to make sure it was still working correctly and was being tracked accurately.
+
+  - Another challenge was concurrency and synchronization. Because the resolver handled the network traffic asynchronously, it was important to pick whether data (logs, cache, statistics) would be recorded as atomics or mutexes to avoid race conditions and deadlocks.
+
+  - A lot of the early challenges we faced had to do with project architecture as well. Setting up CICD, AWS EC2, AWS IAM, and setting up a service on ubuntu all proved to be confusing in with small errors taking a lengthy amount of time to fix.
+
+  - Understanding how to implement DNSSEC in a new way was difficult because we implemented a DNS resolver and client. Normally, Authoritative servers are the ones who contain DNSKEY and they sign responses that are sent to the DNS resolver. We had to implement DNSSEC between the resolver and client. Learning how a DNSKEY response is structured and how RRSIG signs responses was challenging.
 - What AI tools did you use, and what did you use them for? What were their benefits and drawbacks?
-  - I used Google Gemini AI to ask questions relating to an issue I had when trying to host our website locally on 
-port 8080 while also running the resolver with real traffic using Cargo inside the remote Docker development container 
-in Rust Rover (in early development I wanted to avoid changing our AWS main website). It helped me try potential 
-solutions and conclude that the website was only accessible inside the terminal/container environment and not 
-from my local browser, and thus I needed a different method if I wanted to host the website locally. Benefits were 
-that it provided a more knowledgeable view of the schematics than I personally had, and it was able to provide me 
-with feedback and potential solutions in real time. A drawback was that I had to push it towards that final 
-conclusion based on my personal instinct, as initially it was continuously providing solutions that were simply 
-not possible, and in the end, I did end up consulting two members for confirmation and not just trusting the AI’s word.
+  - We used Google Gemini AI to ask questions relating to an issue we had when trying to host our website locally on port 8080 while also running the resolver with real traffic using Cargo inside the remote Docker development container in Rust Rover (in early development we wanted to avoid changing our AWS main website). It helped me try potential solutions and conclude that the website was only accessible inside the terminal/container environment and not from a local browser, and thus we needed a different method if we wanted to host the website locally. Benefits were that it provided a more knowledgeable view of the schematics than we personally had, and it was able to provide us with feedback and potential solutions in real time. A drawback was that we had to push it towards that final conclusion based on personal instinct, as initially it was continuously providing solutions that were simply not possible, and in the end, we did end up consulting two members for confirmation and not just trusting the AI’s word.
+
+  - We also used AI to outline the project and split it up into conceptual parts that we could all work on and then have deliverables we worked on each week without having to depend on sequential work from the others. This was honestly a useful tool in splitting up work and project management, especially in establishing scope for how hard and lengthy some parts of the project would be. We also used AI to help write out json files for IAM in AWS which felt like shooting myself in the foot repeatedly. Claude could not fix visibility issues and overcomplicated a simple issue into something much bigger. The fix ended up just setting up the same AWS region rather than messing with finicky IAM permissions. We also used Claude to generate normal traffic, and attacker dns tunneling traffic simulating python scripts that we could test against our DNS server. The scripts were very useful but very ill documented, causing some errors that delayed testing.
+
+  - We also used Claude to help with cryptography and packaging DNSKEY/RRSIG. The binary serialization of the public key was done by Claude and turned into wire format due to ECDSA P-256 requirements, and it was very helpful. It also helped with the checksum for the key tag, allowing us to ensure that the client was able to correctly identify which public key was used. Since the idea was so complex, Claude was very useful in helping us understand how to package responses.
 - What would you do differently next time?
-  - There was certain logic choices made within our project that sufficed for the scope of our class knowledge and 
-project scope, but if we expanded our project, it may introduce slower output, bottlenecks, or high memory usage. 
-For example, if introduced over a million queries to our current UDP listener, the current global lock implementation 
-would cause a bottleneck, so if we did the project again, we could explore further on how to handle threads for 
-large scale productions.
+  - There was certain logic choices made within our project that sufficed for the scope of our class knowledge and project scope, but if we expanded our project, it may introduce slower output, bottlenecks, or high memory usage. For example, if introduced over a million queries to our current UDP listener, the current global lock implementation would cause a bottleneck, so if we did the project again, we could explore further on how to handle threads for large scale productions.
+
+  - Additionally, we would’ve liked to have expanded the DNS client package to provide more information than from dig or nslookup cli tools. We decided not to implement this any further because the monitoring website accomplished the same thing within a GUI.
 ## What to submit
 - Push your working code to the main branch of your team's GitHub Repository before the deadline
 - Edit the README to answer the above questions
