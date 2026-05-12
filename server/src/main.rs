@@ -275,9 +275,8 @@ pub async fn handle_request(
         return Ok((resp, domain_name, 0));
     }
 
-    stats.record_domain(domain_name.clone());   // record domain in stats
-
     let threat_result = threat_detector.analyze(src.ip(), &domain_name);
+    // only track non-blocked domains in "top queried domains"
     stats.record_threat_result(src.ip().to_string(), domain_name.clone(), &threat_result);
     if threat_result.flagged {
         println!(
@@ -304,6 +303,7 @@ pub async fn handle_request(
         return Ok((build_nxdomain_response(request), domain_name, 3));
     }
 
+    stats.record_domain(domain_name.clone());   // record domain in stats
     let cache_key = format!("{}|{}|{}", question.name, question.qtype, question.qclass);
 
     if let Some(entry) = cache.get(&cache_key) {
