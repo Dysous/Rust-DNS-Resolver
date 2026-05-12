@@ -10,12 +10,6 @@ use hickory_resolver::name_server::TokioConnectionProvider;
 //so we will be using crates that implement dns for us here
 //these crates SHOULD NOT be used in other packages
 
-
-//details needed to return
-//(hostname, IP)
-//RTT
-//DNSSEC signature?
-
 //usage: client [d/c] [hostname]
 
 fn usage() {
