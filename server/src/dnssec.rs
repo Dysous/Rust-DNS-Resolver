@@ -33,7 +33,7 @@ impl DnssecSigner {
         // In a strict implementation, we'd sign the canonical RRSet,
         // but signing the whole packet is a common proxy shortcut.
         let sig = self.key_pair.sign(&rng, &packet_bytes).expect("Signing failed");
-
+        
         let mut rdata = Vec::new();
         rdata.extend_from_slice(&1u16.to_be_bytes()); // Type Covered (A)
         rdata.push(DNSSEC_ALGORITHM_ECDSAP256);

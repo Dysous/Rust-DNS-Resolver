@@ -1,4 +1,4 @@
-mod packet;
+pub mod packet;
 mod stats;
 mod blocklist;
 mod threat;
@@ -55,7 +55,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let url = format!("http://www.duckdns.org/update?domains={}&token={}", domain, token);
 
             let mut interval = tokio::time::interval(Duration::from_secs(60));
-
             loop { //update duck dns binding loop
                 //TODO pfsense creates an warning that takes down the actual server website
                 interval.tick().await;
