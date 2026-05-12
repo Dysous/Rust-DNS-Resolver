@@ -25,14 +25,13 @@ impl DnssecSigner {
 
         Self { key_pair, key_tag }
     }
-
+    
     //signs response that is sent to client
     pub fn sign_response(&self, mut packet_bytes: Vec<u8>, domain_wire: &[u8]) -> Vec<u8> {
     //pub fn sign_response(&self, packet_bytes: &[u8], domain_wire: &[u8]) -> Vec<u8> {
         let rng = ring::rand::SystemRandom::new();
 
-
-        //signature
+         //signature
         let sig = self.key_pair.sign(&rng, &packet_bytes).expect("Signing failed");
 
         let mut rdata = Vec::new();
@@ -69,8 +68,7 @@ impl DnssecSigner {
 
         packet_bytes
     }
-
-    //builds dnskey response
+     //builds dnskey response
     pub fn build_dnskey_answer(&self, request: &[u8], domain_wire: &[u8]) -> Vec<u8> {
         let mut response = request.to_vec();
 

@@ -3,7 +3,6 @@
 
 use std::str;
 
-//wrapper (cursor)
 pub struct BytePacketBuffer {
     pub buf: [u8; 512],
     pub pos: usize,
@@ -15,7 +14,6 @@ impl BytePacketBuffer {
             pos: 0
         };
         let n = data.len().min(512); buffer.buf[..n].copy_from_slice(&data[..n]);
-        //buffer.buf[..data.len()].copy_from_slice(data); //can overflow after 512 bytes, need fix
         buffer
     }
 
@@ -94,14 +92,13 @@ pub struct DnsPacket {
     pub additional: Vec<DnsRecord>,     //not impl yet
 }
 
-//DNSRECORD IS AFTER WEEK 1 NOT IMPLEMENTED YET
 #[derive(Debug)]
 pub struct DnsRecord {
     pub name: String,
     pub rtype: u16,
     pub class: u16,
     pub ttl: u32,
-    pub data: Vec<u8>, // change vec<u8> later when implement
+    pub data: Vec<u8>,
 }
 
 
@@ -224,8 +221,7 @@ impl DnsPacket {
         for question in &self.questions {
             question.write(&mut buffer);
         }
-        //let len = data.len().min(512);
-        buffer.buf[..buffer.pos].to_vec()   //week 1 logic, will overflow after 512 bytes later
+        buffer.buf[..buffer.pos].to_vec()
     }
 }
 

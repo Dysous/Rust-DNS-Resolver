@@ -43,8 +43,4 @@ impl Blocklist {
         let domain = domain.trim_end_matches('.').to_lowercase();
         self.domains.contains(&domain)
     }
-
-    //edit blocklist?
-    //if we want to update the blocklist as the server is running this impl will have to change
-    //might be able to add, but only load on restart
 }

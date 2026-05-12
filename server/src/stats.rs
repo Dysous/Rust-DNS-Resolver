@@ -3,7 +3,6 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH, Instant};
 use serde::Serialize;
-//use crate::threat::{ThreatResult, TunnelEvidence};
 use crate::threat::ThreatResult;
 
 const LOG_BUFFER_SIZE: usize = 1000;    //ring buffer for logs

@@ -2,7 +2,6 @@ pub mod packet;
 mod stats;
 mod blocklist;
 mod threat;
-//use threat::{ThreatDetector, TunnelEvidence};
 use threat::ThreatDetector;
 mod doh;
 mod dnssec;
@@ -11,7 +10,7 @@ use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::net::SocketAddr;
-// use std::net::{SocketAddr, UdpSocket};
+
 use std::time::*;
 use std::collections::HashMap;
 use std::sync::{Arc};
@@ -239,11 +238,7 @@ pub async fn handle_request(
     threat_detector: &Arc<Mutex<ThreatDetector>>,
     signer: &Arc<DnssecSigner>,
 )-> Result<(Vec<u8>, String, u8), Box<dyn Error + Send + Sync>> {
-        /* for the above line of code^^
-        Vec<u8> = DNS response
-        String = domain
-        u8 = DNS RCODE
-        */
+        
     let packet = packet::DnsPacket::from_bytes(request);
     let question = match packet.questions.first() {
         Some(q) => q,
@@ -323,7 +318,6 @@ pub async fn handle_request(
     stats.upstream_forwards.fetch_add(1, Ordering::Relaxed);
     let duration = start.elapsed().as_millis() as u64;
 
-    //stats.total_latency_ms.fetch_add(duration, Ordering::Relaxed);
     stats.add_latency(duration);
 
     if let Some(ttl) = extract_min_ttl(&response) {
