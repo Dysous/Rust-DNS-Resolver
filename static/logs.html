@@ -34,11 +34,6 @@
         <p id="blocked-logs" class="stat-value">0</p>
       </div>
 
-      <div class="stat-card">
-        <p class="stat-label">DNSSEC Status</p>
-        <p id="dnssec-logs" class="stat-value">Active</p>
-      </div>
-
       <!-- Search/filter -->
       <div class="stat-card full-width">
         <p class="stat-label">Search & Filters</p>
@@ -128,8 +123,6 @@
             l.status === "REFUSED" ||
             l.status === "BAD_QUERY",
         ).length;
-
-        document.getElementById("dnssec-logs").innerText = "Active";
       }
 
       //processes search query and dropdown selections, reruns every time user types/selection
