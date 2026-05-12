@@ -114,7 +114,7 @@
           document.getElementById("avg-latency").innerText =
             data.avg_latency_ms || 0;
 
-          // 2. DNSSEC + Blocking Stats (TODO)
+          // 2. DNSSEC + Blocking Stats
           if (document.getElementById("blocked-queries")) {
             document.getElementById("blocked-queries").innerText =
               data.blocked_total || 0;

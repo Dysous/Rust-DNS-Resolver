@@ -76,14 +76,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let shared_blocklist = Arc::new(Blocklist::load("hosts.txt"));
-    let shared_threat_detector = Arc::new(Mutex::new(ThreatDetector::new()));   //NEW CODE 1 LINE
+    let shared_threat_detector = Arc::new(Mutex::new(ThreatDetector::new()));
     let dns_stats = Arc::clone(&shared_stats);
     let dns_blocklist = Arc::clone(&shared_blocklist);
 
     //shared cache for udp listener and the DoH handling
     let dns_cache = Arc::clone(&shared_cache);
     let dns_signer = Arc::clone(&signer);
-    let dns_threats = Arc::clone(&shared_threat_detector);  //NEW CODE 1 LINE
+    let dns_threats = Arc::clone(&shared_threat_detector);
 
     tokio::spawn(async move {
         if let Err(e) = run_udp_listener(
@@ -134,7 +134,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 "blocked_total": s.blocked_total.load(Ordering::Relaxed),
                 "dnssec_success": s.dnssec_success.load(Ordering::Relaxed),
                 "dnssec_failure": s.dnssec_failure.load(Ordering::Relaxed),
-                "avg_threat_score": s.get_avg_threat_score(),   // NEW CODE 1 line
+                "avg_threat_score": s.get_avg_threat_score(),
             }))
         }))
         .route("/api/logs", get({
@@ -198,7 +198,7 @@ async fn run_udp_listener(
     blocklist: Arc<Blocklist>,
     cache: Arc<Mutex<HashMap<String, CacheEntry>>>,
     signer: Arc<DnssecSigner>,
-    threat_detector: Arc<Mutex<ThreatDetector>>, // NEW CODE 1
+    threat_detector: Arc<Mutex<ThreatDetector>>,
 ) -> Result<(), Box<dyn Error>> {
     let socket = UdpSocket::bind(bind_addr).await?;
     println!("UDP listener running on {}", bind_addr);
@@ -214,7 +214,7 @@ async fn run_udp_listener(
 
 
         // Access the shared cache and threat detector
-        let mut cache_guard = cache.lock().await;       //NEW CODE 2
+        let mut cache_guard = cache.lock().await;
         let mut threat_guard = threat_detector.lock().await;
         /*the cache_guard and threat_guard is correct for week 4 implementation
         but be very careful to never lock these in a different order anywhere else
@@ -278,7 +278,7 @@ pub async fn handle_request(
     stats.record_domain(domain_name.clone());   // record domain in stats
 
     let threat_result = threat_detector.analyze(src.ip(), &domain_name);
-    stats.record_threat_result(src.ip().to_string(), domain_name.clone(), &threat_result);  // NEW CODE 1
+    stats.record_threat_result(src.ip().to_string(), domain_name.clone(), &threat_result);
     if threat_result.flagged {
         println!(
             "THREAT FLAGGED: {} score={} tunneling={} reasons={:?}",
