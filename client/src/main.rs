@@ -82,19 +82,29 @@ async fn handle_input (input: &str) -> Result <(), Box<dyn Error>> {
                 bind_addr: None,
             });
 
-            TokioAsyncResolver::tokio(config, ResolverOpts::default())
+            //verifies data is sent from server
+            let mut opts = ResolverOpts::default();
+            opts.validate = true;
+
+            TokioAsyncResolver::tokio(config, opts)
         } else {
             eprintln!("Error: Invalid flag '{}'", args[0]);
             usage();
             return Err("Invalid flag".into());
         };
 
-        //IPv4 lookup
-        let response = resolver.lookup_ip(hostname).await?;
 
-        println!("IP addresses for {}:", args[1]);
-        for ip in response {
-            println!("{}", ip);
+        match resolver.lookup_ip(hostname).await {
+            Ok(responses) => {
+                println!("DNSSEC: Verified");
+                println!("Hostname: \"{}\"", hostname.trim());
+                for ip in responses {
+                    println!("{}", ip);
+                }
+            }
+            Err(e) => {
+                println!("DNSSEC: Error: {}", e);
+            }
         }
     }
 
