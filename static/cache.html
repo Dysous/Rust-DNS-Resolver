@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNS Cache | Monitor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="navbar">
+    <a class="nav-link" href="index.html">Dashboard</a>
+    <a class="nav-link" href="logs.html">Logs</a>
+    <a class="nav-link active" href="cache.html">Cache</a>
+    <a class="nav-link" href="threats.html">Threats</a>
+</div>
+
+<h1>DNS Cache & Resolver Storage</h1>
+
+<div class="dashboard">
+    <!-- cache stats cards, values from /api/stats -->
+    <!-- num of cached DNS records currently stored in memory -->
+    <div class="stat-card">
+        <p class="stat-label">Cached Records</p>
+        <p id="cache-count" class="stat-value">0</p>
+        <p class="stat-label" style="font-size: 0.6rem;">Active In-Memory Entries</p>
+    </div>
+
+    <!-- num of times a DNS request was served from cache (fast response) -->
+    <div class="stat-card">
+        <p class="stat-label">Total Cache Hits</p>
+        <p id="cache-hits" class="stat-value">0</p>
+        <p class="stat-label" style="font-size: 0.6rem;">Global Successes</p>
+    </div>
+
+    <!-- num of times the resolver had to query upstream DNS (cache miss) -->
+    <div class="stat-card">
+        <p class="stat-label">Upstream Forwards</p>
+        <p id="upstream-count" class="stat-value">0</p>
+        <p class="stat-label" style="font-size: 0.6rem;">Cache Misses</p>
+    </div>
+
+    <!-- cache records table -->
+    <div class="stat-card full-width">
+        <p class="stat-label">Current Cached DNS Records</p>
+        <div class="log-table">
+            <div class="log-row log-header">
+                <span>Domain</span>
+                <span>Type</span>
+                <span>TTL Remaining</span>
+                <span>Status</span>
+            </div>
+            <div id="cache-table-body">
+                <!-- dynamic cache rows injected here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function updateCachePage() {
+        try {
+            // 1. fetch global stats for the top cards
+            const statsRes = await fetch('/api/stats');
+            const stats = await statsRes.json();
+            document.getElementById('cache-hits').innerText = stats.cache_hits;
+            document.getElementById('upstream-count').innerText = stats.upstream_forwards;
+
+            // 2. fetch all currently stored DNS cache entries
+            const cacheRes = await fetch('/api/cache');
+            const entries = await cacheRes.json();
+
+            // update num of cache records displayed
+            document.getElementById('cache-count').innerText = entries.length;
+
+            const tableBody = document.getElementById('cache-table-body');
+
+            //if cache is empty shows placeholder value of 0
+            if (entries.length === 0) {
+                tableBody.innerHTML = '<div class="log-row"><span>Cache is currently empty.</span></div>';
+                return;
+            }
+
+            tableBody.innerHTML = entries.map(entry => {
+                // Your key format is "domain|type|class"
+                const parts = entry.key.split('|');
+                const domain = parts[0] || "Unknown";
+                const qtype = parts[1] === "1" ? "A" : (parts[1] === "28" ? "AAAA" : parts[1]);
+
+                return `
+                    <div class="log-row">
+                        <span style="word-break: break-all;">${domain}</span>
+                        <span>${qtype}</span>
+                        <span>${entry.expires_in_secs}s</span>
+                        <span style="color: #28a745; font-weight: bold;">LIVE</span>
+                    </div>
+                `;
+            }).join('');
+
+        } catch (err) {
+            console.error("Cache update failed:", err);
+        }
+    }
+
+    // refreshes every 2 seconds to mimic "live" demo
+    setInterval(updateCachePage, 2000);
+    updateCachePage();
+</script>
+
+</body>
+</html>

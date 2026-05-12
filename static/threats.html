@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Threat Detection | DNS Firewall</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* different styles for threat highlighting; high scores are bright red */
+        .threat-high { color: #ff4d4d; font-weight: bold; }
+        .threat-medium { color: #ffa500; }
+        .evidence-box {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            margin-top: 5px;
+            border-left: 3px solid #007bff;
+            overflow-x: auto;
+        }
+        /* lists specific threat reasons such as high entropy */
+        .reason-tag {
+            display: inline-block;
+            background: #333;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="navbar">
+    <a class="nav-link" href="index.html">Dashboard</a>
+    <a class="nav-link" href="logs.html">Logs</a>
+    <a class="nav-link" href="cache.html">Cache</a>
+    <a class="nav-link active" href="threats.html">Threats</a>
+</div>
+
+<h1>Security & Threat Modeling</h1>
+
+<div class="dashboard">
+
+    <!-- global threat stats, high level overview of engine's current state -->
+    <div class="stat-card">
+        <p class="stat-label">Blocked (NXDOMAIN)</p>
+        <p id="stat-blocked" class="stat-value">0</p>
+        <p class="stat-label" style="font-size: 0.6rem;">Blocklist Matches</p>
+    </div>
+
+    <!-- average of all recent query scores -->
+    <div class="stat-card">
+        <p class="stat-label">Avg Threat Score</p>
+        <p id="stat-avg-score" class="stat-value">0</p>
+        <p class="stat-label" style="font-size: 0.6rem;">Global Network Risk</p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">DNSSEC Validations</p>
+        <p id="stat-dnssec-ok" class="stat-value">0</p>
+    </div>
+
+    <div class="stat-card">
+        <p class="stat-label">DNSSEC Failures</p>
+        <p id="stat-dnssec-fail" class="stat-value" style="color: #ff4d4d;">0</p>
+    </div>
+
+    <!-- Tunneling watchlist from threat.rs logic -->
+    <div class="stat-card full-width">
+        <p class="stat-label">Active Tunneling Watchlist</p>
+        <div class="log-table">
+            <div class="log-row log-header">
+                <span>Base Domain</span>
+                <span>Subdomain Diversity</span>
+                <span>Avg Entropy</span>
+                <span>Last Seen</span>
+            </div>
+            <div id="watchlist-container">
+                <!-- tunneling evidence injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Security feed of chronological list of flagged queries -->
+    <div class="stat-card full-width">
+        <p class="stat-label">Recent Flagged Queries</p>
+        <div class="log-table">
+            <div class="log-row log-header">
+                <span>Timestamp</span>
+                <span>Source IP</span>
+                <span>Domain</span>
+                <span>Score</span>
+                <span>Reasons</span>
+            </div>
+            <div id="threat-feed-container">
+                <!-- flagged query rows data injected here -->
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="status">
+    <span class="dot" style="background: #28a745;"></span>
+    Threat Engine Online & Monitoring
+</div>
+
+<script>
+    // prevents cross site scripting (XSS) from malicious scripts
+    const escapeHTML = (s) => String(s).replace(/[&<>"']/g, m => ({
+        '&':'&amp;',
+        '<':'&lt;',
+        '>':'&gt;',
+        '"':'&quot;',
+        "'":'&#39;'
+    }[m]));
+    async function updateThreatData() {
+        try {
+            // 1. update global counters
+            const statsRes = await fetch('/api/stats');
+            const stats = await statsRes.json();
+            document.getElementById('stat-blocked').innerText = stats.blocked_total;
+            document.getElementById('stat-avg-score').innerText = stats.avg_threat_score.toFixed(1);
+            document.getElementById('stat-dnssec-ok').innerText = stats.dnssec_success;
+            document.getElementById('stat-dnssec-fail').innerText = stats.dnssec_failure;
+
+            // 2. update flagged query feed/timeline
+            const threatRes = await fetch('/api/threats');
+            const threats = await threatRes.json();
+            const feedContainer = document.getElementById('threat-feed-container');
+
+            feedContainer.innerHTML = threats.length === 0
+                ? '<div class="log-row"><span>No flagged threats detected.</span></div>'
+                : threats.slice().reverse().map(ev => `
+                    <div class="log-row flagged">
+                        <span>${new Date(ev.timestamp * 1000).toLocaleTimeString()}</span>
+                        <span>${ev.source_ip}</span>
+                        <span style="word-break: break-all;">${ev.domain}</span>
+                        <span class="${ev.score > 70 ? 'threat-high' : 'threat-medium'}">${ev.score}</span>
+                        <span>${ev.reasons.map(r => `<span class="reason-tag">${r}</span>`).join('')}</span>
+                    </div>
+                `).join('');
+
+            // 3. update tunneling watchlist
+            const watchRes = await fetch('/api/watchlist');
+            const watchlist = await watchRes.json();
+            const watchContainer = document.getElementById('watchlist-container');
+
+            watchContainer.innerHTML = watchlist.length === 0
+                ? '<div class="log-row"><span>No active tunneling signatures.</span></div>'
+                : watchlist.map(item => `
+                    <div style="border-bottom: 1px solid #333; padding: 10px 0;">
+                        <div class="log-row" style="border-bottom: none;">
+                            <span class="threat-high">${item.domain}</span>
+                            <span>${item.unique_subdomain_count} uniques</span>
+                            <span>${
+                                item.entropy_scores.length
+                                    ? (item.entropy_scores.reduce((a,b) => a+b, 0) / item.entropy_scores.length).toFixed(2)
+                                    : "0.00"
+                            }</span>
+                            <span>${item.last_seen_secs_ago}s ago</span>
+                        </div>
+                        <div class="evidence-box">
+                            <strong>Evidence (Sample Queries):</strong><br>
+                            ${item.sample_queries.map(q => `> ${escapeHTML(q)}`).join('<br>')}
+                        </div>
+                    </div>
+                `).join('');
+
+        } catch (err) {
+            console.error("Failed to refresh threat data:", err);
+        }
+    }
+
+    // refreshes every 3 seconds to mimic "live" demo
+    setInterval(updateThreatData, 3000);
+    updateThreatData();
+</script>
+
+</body>
+</html>
