@@ -29,7 +29,7 @@ Unless you get specific approval otherwise, your project **must** include some c
 - Do something with route optimization
 - Implement an HTTP protocol and have a simple website demo
 
---> These are just examples. I hope that you'll come up with a better idea to suit your own interests!
+→ These are just examples. I hope that you'll come up with a better idea to suit your own interests!
 
 ## Libraries
 
@@ -45,12 +45,51 @@ The core of your project should, ideally, be written in Rust. Depending on the p
 
 ## Questions
 - What is your project?
-- What novel work did you do?
-- What did you learn?
-- What was challenging?
-- What AI tools did you use, and what did you use them for? What were their benefits and drawbacks?
-- What would you do differently next time?
+	- Our project is a DNS resolver written in Rust that supports traditional UDP DNS queries and DoH (DNS over HTTPS). 
+Our resolver included a packet parser, caching with TTL expiration, DNSSEC validation/signing, pi-hole domain blocking 
+(ad blocker engine), threat detection for suspicious DNS activity and identifying DNS tunneling, and a live statistics 
+monitoring dashboard. 
 
+- What novel work did you do?
+  - For the statistics and monitoring infrastructure/dashboard, we worked on the internal API 
+endpoints, in-memory logging system, live query stream, cache monitoring page, DNSSEC statistics, and threat 
+visualization pages. Most of the work for the website required connecting the separate backend systems together 
+and integrating them into the resolver pipeline or exposing them to the frontend. We connected the DNS resolver, 
+stats engine, and frontend dashboard pages to track and display live info about blocked domains, threat scores, 
+cache hits, tunneling alerts, and DNSSEC activity.
+
+- What did you learn?
+  - The initial foundation of our project focused on learning about DNS at the packet level, such as DNS headers, 
+name compression, caching, response codes, and DNSSEC records. We also further learned about atomics, mutexes, 
+Tokio async networking, and thread safe shared states in Rust programming. We learned how to connect our Rust 
+backend to a live monitoring dashboard that continuously updated the DNS statistics by using JSON APIs and 
+JavaScript fetch requests.
+
+- What was challenging?
+  - When compiling the statistics for our website, my biggest challenge was integration/connection because many systems 
+worked independently. For example, the logic for some security and threat-detection components existed but were not 
+connected to the resolver loop, stats engine, or frontend APIs, so events were not able to appear on the dashboard 
+until further connective code was implemented. Likewise, for each use case this often involved having to change 
+logic across 2-4 different files to make sure it was still working correctly and was being tracked accurately.
+Another challenge was concurrency and synchronization. Because the resolver handled the network traffic asynchronously, 
+it was important to pick whether data (logs, cache, statistics) would be recorded as atomics or mutexes to avoid race 
+conditions and deadlocks.
+- What AI tools did you use, and what did you use them for? What were their benefits and drawbacks?
+  - I used Google Gemini AI to ask questions relating to an issue I had when trying to host our website locally on 
+port 8080 while also running the resolver with real traffic using Cargo inside the remote Docker development container 
+in Rust Rover (in early development I wanted to avoid changing our AWS main website). It helped me try potential 
+solutions and conclude that the website was only accessible inside the terminal/container environment and not 
+from my local browser, and thus I needed a different method if I wanted to host the website locally. Benefits were 
+that it provided a more knowledgeable view of the schematics than I personally had, and it was able to provide me 
+with feedback and potential solutions in real time. A drawback was that I had to push it towards that final 
+conclusion based on my personal instinct, as initially it was continuously providing solutions that were simply 
+not possible, and in the end, I did end up consulting two members for confirmation and not just trusting the AI’s word.
+- What would you do differently next time?
+  - There was certain logic choices made within our project that sufficed for the scope of our class knowledge and 
+project scope, but if we expanded our project, it may introduce slower output, bottlenecks, or high memory usage. 
+For example, if introduced over a million queries to our current UDP listener, the current global lock implementation 
+would cause a bottleneck, so if we did the project again, we could explore further on how to handle threads for 
+large scale productions.
 ## What to submit
 - Push your working code to the main branch of your team's GitHub Repository before the deadline
 - Edit the README to answer the above questions
@@ -92,4 +131,4 @@ All other instructions for the project apply, including the above submission que
 - Mesh networking
 - Machine learning for routing protocols
 
---> These are just examples. I hope that you'll come up with a better idea to suit your own interests!
+→ These are just examples. I hope that you'll come up with a better idea to suit your own interests!
