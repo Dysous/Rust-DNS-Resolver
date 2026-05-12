@@ -181,7 +181,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .fallback_service(ServeDir::new(static_dir));
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     println!("Web Monitor Live At http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     //getting http connection info now for /dns-query integration with stats later
